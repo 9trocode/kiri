@@ -1,0 +1,21 @@
+Kiri third-party notices
+
+Kiri is licensed under Apache-2.0. This file contains the licence and
+attribution notices for code bundled with or downloaded by Kiri. The guest
+Linux kernel is a separate GPL-2.0-only work; its source offer follows the
+third-party licence texts below.
+
+Rust workspace and locked dependencies
+======================================
+
+{{#each licenses}}
+{{name}}
+----------------------------------------------------------------------
+Used by:
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}
+{{/each}}
+
+{{{text}}}
+
+{{/each}}

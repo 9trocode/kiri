@@ -1,0 +1,319 @@
+{
+  "updated": "2026-10-24",
+  "machine": "Apple Silicon Mac, macOS 27.0.1",
+  "note": "status 'measured' = measured on this machine; 'target' = design budget not yet measured end to end. Container lifecycle = create from alpine, run `true`, exit, remove; p50 of 30 runs after 5 warm-up runs.",
+  "orbstack": {
+    "version_note": "OrbStack, Linux 7.2.9-orbstack, Docker CLI",
+    "rows": [
+      {
+        "metric": "docker run --rm alpine true",
+        "value_ms": 325,
+        "range": "300-350",
+        "status": "measured"
+      },
+      {
+        "metric": "docker run -d (alpine/redis/python/nginx)",
+        "value_ms": 205,
+        "status": "measured"
+      },
+      {
+        "metric": "docker start (pre-created)",
+        "value_ms": 88,
+        "status": "measured"
+      },
+      {
+        "metric": "docker unpause",
+        "value_ms": 23,
+        "status": "measured"
+      },
+      {
+        "metric": "Docker CLI round trip floor",
+        "value_ms": 19,
+        "status": "measured"
+      },
+      {
+        "metric": "dockerd + containerd resident memory",
+        "value_mb": 216,
+        "status": "measured"
+      },
+      {
+        "metric": "per-container shim memory",
+        "value_mb": 7.9,
+        "status": "measured",
+        "detail": "143 shims = 1133 MB"
+      }
+    ]
+  },
+  "kiri": {
+    "rows": [
+      {
+        "metric": "run --rm alpine true (Docker API, bridge network)",
+        "value_ms": 2.55,
+        "status": "measured",
+        "detail": "p50 of 30 next to OrbStack and Docker Desktop; 1.26 ms alone with --network none"
+      },
+      {
+        "metric": "kiri run -d",
+        "value_ms": 6,
+        "status": "target"
+      },
+      {
+        "metric": "start pre-created",
+        "value_ms": 4,
+        "status": "target"
+      },
+      {
+        "metric": "resume paused (cgroup freezer)",
+        "value_ms": 1,
+        "status": "target"
+      },
+      {
+        "metric": "per-container shim memory",
+        "value_mb": 0,
+        "status": "measured",
+        "detail": "no shim process exists; the guest agent supervises every container"
+      },
+      {
+        "metric": "engine daemon resident memory",
+        "value_mb": 9.7,
+        "status": "measured",
+        "detail": "kiri daemon on the Mac (9.0 MB footprint) plus the guest agent inside the VM (0.69 MB resident); compare OrbStack dockerd + containerd"
+      },
+      {
+        "metric": "guest init binary size",
+        "value_kb": 650,
+        "status": "measured",
+        "detail": "PID 1, guest agent and container runtime, with gzip/zstd/tar for layers"
+      },
+      {
+        "metric": "kiri host binary size",
+        "value_kb": 2165,
+        "status": "measured",
+        "detail": "includes TLS for pulls, the Docker API server and the window"
+      },
+      {
+        "metric": "VM cold boot to agent ready (total)",
+        "value_ms": 112,
+        "status": "measured",
+        "detail": "median of 5; was 810 ms with a stock defconfig kernel"
+      },
+      {
+        "metric": "Virtualization.framework configure + start",
+        "value_ms": 95,
+        "status": "measured",
+        "detail": "Apple's helper process start; outside Kiri"
+      },
+      {
+        "metric": "guest kernel boot to PID 1",
+        "value_ms": 8,
+        "status": "measured",
+        "detail": "was 680 ms (defconfig) -> 40 ms (allnoconfig) -> 8 ms (virtio reset patch)"
+      },
+      {
+        "metric": "PID 1 to agent ready",
+        "value_ms": 0.4,
+        "status": "measured",
+        "detail": "was 15 ms before rcu_expedited"
+      },
+      {
+        "metric": "clean guest shutdown",
+        "value_ms": 2.2,
+        "status": "measured"
+      },
+      {
+        "metric": "host <-> guest vsock round trip p50",
+        "value_us": 31,
+        "status": "measured"
+      },
+      {
+        "metric": "host <-> guest vsock round trip p99",
+        "value_us": 62,
+        "status": "measured"
+      },
+      {
+        "metric": "guest kernel image size",
+        "value_kb": 10264,
+        "status": "measured",
+        "detail": "was 32 MB"
+      },
+      {
+        "metric": "daemon idle CPU",
+        "value_pct": 0.0,
+        "status": "measured"
+      },
+      {
+        "metric": "VM helper process footprint (Virtualization.framework)",
+        "value_mb": 69,
+        "status": "measured"
+      }
+    ]
+  },
+  "kernel_primitives": {
+    "note": "Measured inside a Linux 7.2 VM; the building blocks of a container start",
+    "rows": [
+      {
+        "metric": "fork + exec",
+        "value_ms": 0.54
+      },
+      {
+        "metric": "mnt+uts+ipc+pid namespaces + exec",
+        "value_ms": 0.78
+      },
+      {
+        "metric": "+ network namespace",
+        "value_ms": 1.15
+      },
+      {
+        "metric": "cgroup v2 create + limit + remove",
+        "value_ms": 1.23
+      },
+      {
+        "metric": "overlay mount + unmount",
+        "value_ms": 0.36
+      },
+      {
+        "metric": "veth create + attach to bridge",
+        "value_ms": 2.2
+      },
+      {
+        "metric": "veth delete (Docker does this before --rm returns)",
+        "value_ms": 18.9
+      }
+    ]
+  },
+  "boot_journey": [
+    {
+      "step": "stock arm64 defconfig kernel",
+      "boot_ms": 810
+    },
+    {
+      "step": "allnoconfig + only what the VM has",
+      "boot_ms": 175
+    },
+    {
+      "step": "expedited RCU (cgroup2 mount 23 ms -> 0.1 ms)",
+      "boot_ms": 140
+    },
+    {
+      "step": "virtio-pci reset poll patch",
+      "boot_ms": 112
+    }
+  ],
+  "lifecycle": {
+    "test": "alpine:latest \u2192 true \u2192 exit \u2192 removed",
+    "runs": 30,
+    "rows": [
+      {
+        "engine": "Kiri",
+        "path": "Docker Engine API (kiri daemon)",
+        "network": "bridge",
+        "p50_ms": 2.55,
+        "p99_ms": 4.72,
+        "status": "measured"
+      },
+      {
+        "engine": "Kiri",
+        "path": "docker CLI (context kiri)",
+        "network": "bridge",
+        "p50_ms": 14.15,
+        "p99_ms": 17.37,
+        "status": "measured"
+      },
+      {
+        "engine": "Docker Desktop",
+        "path": "Docker Engine API",
+        "network": "bridge",
+        "p50_ms": 213.4,
+        "p99_ms": 774.1,
+        "status": "measured"
+      },
+      {
+        "engine": "Docker Desktop",
+        "path": "docker CLI",
+        "network": "bridge",
+        "p50_ms": 243.3,
+        "p99_ms": 350.8,
+        "status": "measured"
+      },
+      {
+        "engine": "OrbStack",
+        "path": "Docker Engine API",
+        "network": "bridge",
+        "p50_ms": 379.9,
+        "p99_ms": 828.9,
+        "status": "measured"
+      },
+      {
+        "engine": "OrbStack",
+        "path": "docker CLI",
+        "network": "bridge",
+        "p50_ms": 442.2,
+        "p99_ms": 2383.2,
+        "status": "measured"
+      },
+      {
+        "engine": "Kiri",
+        "path": "Docker Engine API (kiri daemon)",
+        "network": "none",
+        "p50_ms": 2.68,
+        "p99_ms": 5.79,
+        "status": "measured"
+      },
+      {
+        "engine": "Kiri",
+        "path": "docker CLI (context kiri)",
+        "network": "none",
+        "p50_ms": 13.97,
+        "p99_ms": 15.84,
+        "status": "measured"
+      },
+      {
+        "engine": "Docker Desktop",
+        "path": "Docker Engine API",
+        "network": "none",
+        "p50_ms": 109.6,
+        "p99_ms": 127.4,
+        "status": "measured"
+      },
+      {
+        "engine": "Docker Desktop",
+        "path": "docker CLI",
+        "network": "none",
+        "p50_ms": 111.4,
+        "p99_ms": 125.4,
+        "status": "measured"
+      },
+      {
+        "engine": "OrbStack",
+        "path": "Docker Engine API",
+        "network": "none",
+        "p50_ms": 309.5,
+        "p99_ms": 731.8,
+        "status": "measured"
+      },
+      {
+        "engine": "OrbStack",
+        "path": "docker CLI",
+        "network": "none",
+        "p50_ms": 316.5,
+        "p99_ms": 626.7,
+        "status": "measured"
+      }
+    ],
+    "kiri_guest_breakdown": {
+      "namespaces_mounts_cgroup_ms": 0.39,
+      "process_lifetime_ms": 1.41,
+      "note": "includes the bridged network setup and generated /etc files; measured while two other container VMs were busy"
+    },
+    "caveats": [
+      "All three engines were driven by the same docker CLI (29.7.2) and the same Docker Engine API calls, in one run, on the same Mac, with default bridge networking and with --network none.",
+      "During the run OrbStack had 86 containers and a Kubernetes cluster running, and Docker Desktop's VM was up as well; that load widens every engine's spread (p99). OrbStack's numbers are pessimistic.",
+      "Kiri reports a --rm container's exit once its record is removed and deletes its files in the guest just after; with the deletion inside the timing, Kiri's engine time was about 3 ms.",
+      "Of Kiri's ~14 ms through the docker CLI, most is the docker CLI itself starting up."
+    ],
+    "quiet_kiri_ms": {
+      "value": 1.26,
+      "detail": "Kiri alone, Docker Desktop stopped, --network none, Docker API, p50 of 50"
+    }
+  }
+}

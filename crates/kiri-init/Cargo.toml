@@ -1,0 +1,19 @@
+[package]
+name = "kiri-init"
+description = "PID 1 and agent of the Kiri guest VM"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kiri-proto = { path = "../kiri-proto" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+flate2 = "1"
+libc = "0.2"
+ruzstd = "0.9"
+tar = "0.4"
+
+[lints]
+workspace = true

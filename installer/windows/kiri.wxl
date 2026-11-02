@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The installer's words, over the WixUI defaults (a string here with a
+  WixUI Id replaces it). A paragraph break is &#13;&#10; written out: an
+  XML attribute turns a bare line break into a space, and Windows
+  Installer keeps a CR LF in a text control.
+-->
+<WixLocalization xmlns="http://wixtoolset.org/schemas/v4/wxl" Culture="en-US" Codepage="1252">
+
+  <String Id="WelcomeDlgTitle" Value="{\WixUI_Font_Bigger}Welcome to the [ProductName] Setup Wizard" />
+  <!-- The box holds five lines at Segoe UI 9: three for the first paragraph, a blank, one more. -->
+  <String Id="WelcomeDlgDescription" Value="The Setup Wizard will install [ProductName] on your computer. Click Next to continue or Cancel to exit the Setup Wizard.&#13;&#10;&#13;&#10;Docker on Windows, without Docker Desktop." />
+
+  <!-- The ready page's table (KiriReadyDlg in kiri.wxs). -->
+  <String Id="KiriReadyTitle" Value="{\WixUI_Font_Title}Ready to install [ProductName]" />
+  <String Id="KiriReadyFolder" Value="{\Kiri_Font_Label}Folder" />
+  <String Id="KiriReadySize" Value="{\Kiri_Font_Label}Size" />
+  <String Id="KiriReadyScope" Value="{\Kiri_Font_Label}Scope" />
+  <String Id="KiriReadyScopeValue" Value="This user only" />
+
+  <String Id="ExitDialogTitle" Value="{\WixUI_Font_Bigger}Completed the [ProductName] Setup Wizard" />
+  <String Id="ExitDialogDescription" Value="Click the Finish button to exit the Setup Wizard." />
+  <String Id="KiriExitText" Value="The first time Kiri starts it sets up WSL 2 and its Linux engine. That takes a few minutes." />
+  <String Id="KiriExitCheckbox" Value="Launch Kiri" />
+
+</WixLocalization>

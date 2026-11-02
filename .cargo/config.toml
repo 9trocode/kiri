@@ -1,0 +1,13 @@
+[alias]
+xtask = "run -q --package xtask --"
+
+[target.aarch64-unknown-linux-musl]
+linker = "rust-lld"
+
+# kiri-win.exe (and xtask on Windows): link the CRT statically so there is no
+# VCRUNTIME140.dll dependency to plant, and resolve the remaining static DLL
+# imports from System32 only (DEPENDENTLOADFLAG = LOAD_LIBRARY_SEARCH_SYSTEM32).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/DEPENDENTLOADFLAG:0x800"]
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/DEPENDENTLOADFLAG:0x800"]

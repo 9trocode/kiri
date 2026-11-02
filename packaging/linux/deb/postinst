@@ -1,0 +1,59 @@
+#!/bin/sh
+# kiri / kiri-lite .deb: after the files are in place. Makes the `kiri` group
+# the socket is shared with and, for the full package, offers its docker CLI on
+# PATH through update-alternatives at a low priority: a docker CLI another
+# package installed keeps winning.
+set -e
+# True when /usr/bin/docker is absent or already an update-alternatives link.
+# A real file, or a symlink another package or the administrator put there,
+# is left alone: Kiri's CLI must not take over someone else's docker.
+docker_slot_free() {
+  [ -e /usr/bin/docker ] || [ -L /usr/bin/docker ] || return 0
+  case "$(readlink /usr/bin/docker 2>/dev/null)" in /etc/alternatives/*) return 0 ;; esac
+  return 1
+}
+# A `kiri` that comes before /usr/bin on PATH runs instead of this package's:
+# often an older Kiri from a script or manual install. Not ours to delete.
+stale_kiri() {
+  for d in /usr/local/sbin /usr/local/bin; do
+    if [ -e "$d/kiri" ] && [ "$(readlink -f "$d/kiri")" != /usr/bin/kiri ]; then
+      echo "Warning: $d/kiri comes before /usr/bin/kiri on PATH, so it runs instead of this Kiri."
+      echo "  If it's an older Kiri, remove it:  sudo rm $d/kiri"
+    fi
+  done
+}
+case "$1" in
+  configure)
+    getent group kiri >/dev/null || groupadd --system kiri
+    # The engine isn't started or enabled here: it starts when someone sets
+    # Kiri up (the window's Allow access, or `kiri host-access`, which runs
+    # `systemctl enable --now kiri`). Installing alone runs nothing.
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload || true
+      # An upgrade ($2 is the version it replaced) leaves a running engine
+      # alone, so it keeps running the old binary until it restarts.
+      # Restarting stops its containers, so that's the user's call.
+      if [ -n "${2:-}" ] && systemctl is-active -q kiri.service; then
+        echo "Kiri is upgraded from $2. The engine keeps running $2 until it restarts:"
+        echo "  sudo systemctl restart kiri   (running containers stop; those with a restart policy start again)"
+        echo "or open Kiri and choose Restart engine. The next boot starts the new one either way."
+      fi
+    fi
+    stale_kiri
+    if [ -x /usr/libexec/kiri/docker ]; then
+      if docker_slot_free; then
+        update-alternatives --install /usr/bin/docker docker /usr/libexec/kiri/docker 10 || true
+        echo "Kiri is installed with its own docker CLI (docker, docker compose, docker buildx)."
+      else
+        echo "Kiri is installed; /usr/bin/docker belongs to something else and stays. Kiri's CLI: /usr/libexec/kiri/docker"
+      fi
+    else
+      echo "Kiri is installed (engine only). Point a docker CLI at it:"
+      echo "  docker context create kiri --docker host=unix:///run/kiri/docker.sock && docker context use kiri"
+    fi
+    echo "The engine starts when you set Kiri up: open Kiri, or run  sudo kiri host-access \$USER"
+    echo "Members of the kiri group can run containers as root on this machine; treat it like the docker group."
+    echo "While no Docker engine has /var/run/docker.sock, it leads to Kiri too (for Testcontainers, docker-py and other tools that ignore docker contexts)."
+    ;;
+esac
+exit 0

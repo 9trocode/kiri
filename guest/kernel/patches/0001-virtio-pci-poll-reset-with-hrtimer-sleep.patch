@@ -1,0 +1,30 @@
+# Header: virtio-pci waits for device reset with msleep(1), which rounds up to
+# a full scheduler tick (4-8 ms at HZ=250). Virtualization.framework never
+# completes a reset before the first poll, so each device paid a tick at boot.
+# Polling with a 10-50 us hrtimer sleep cuts ~30 ms from boot.
+--- a/drivers/virtio/virtio_pci_modern.c
++++ b/drivers/virtio/virtio_pci_modern.c
+@@ -556,7 +556,7 @@
+ 	 * including MSI-X interrupts, if any.
+ 	 */
+ 	while (vp_modern_get_status(mdev))
+-		msleep(1);
++		usleep_range(10, 50);
+ 
+ 	vp_modern_avq_cleanup(vdev);
+ 
+--- a/drivers/virtio/virtio_pci_modern_dev.c
++++ b/drivers/virtio/virtio_pci_modern_dev.c
+@@ -535,10 +535,10 @@
+ 	vp_iowrite16(1, &cfg->queue_reset);
+ 
+ 	while (vp_ioread16(&cfg->queue_reset))
+-		msleep(1);
++		usleep_range(10, 50);
+ 
+ 	while (vp_ioread16(&cfg->cfg.queue_enable))
+-		msleep(1);
++		usleep_range(10, 50);
+ }
+ EXPORT_SYMBOL_GPL(vp_modern_set_queue_reset);
+ 

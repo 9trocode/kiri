@@ -1,0 +1,54 @@
+[package]
+name = "kiri"
+description = "Tiny, fast container runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kiri-image = { path = "../kiri-image" }
+kiri-proto = { path = "../kiri-proto" }
+kiri-share-proto = { path = "../kiri-share-proto" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+# HTTPS for container names: the same rustls and ring ureq already brings in.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# Roots for `kiri share`'s connection to the edge.
+webpki-roots = "1"
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem", "crypto"] }
+
+[target.'cfg(any(unix, windows))'.dependencies]
+libc = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+kiri-vmm = { path = "../kiri-vmm" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+dispatch2 = "0.3.1"
+objc2 = "0.6.5"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSWindow", "NSView", "NSGraphics", "NSRunningApplication", "NSMenu", "NSMenuItem", "NSEvent"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString"] }
+objc2-core-text = { version = "0.3.2", default-features = false, features = ["std", "CTFontCollection", "CTFontDescriptor", "CTFontTraits"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSNotification", "NSGeometry", "NSObject", "NSAppleScript", "NSDictionary"] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration", "WKUserContentController", "WKScriptMessage", "WKScriptMessageHandler", "WKNavigation"] }
+
+# The Linux window (`kiri ui`), only with `--features window`: the engine and
+# CLI stay one static binary with no desktop libraries; the window is a
+# separate build that links the system's GTK 3 and WebKitGTK 4.1.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = { version = "0.18", optional = true }
+webkit2gtk = { version = "2.0", optional = true, features = ["v2_40"] }
+javascriptcore-rs = { version = "1", optional = true }
+
+# The tests read back the tar archives the managed builder writes.
+[dev-dependencies]
+tar = "0.4"
+
+[features]
+window = ["dep:gtk", "dep:webkit2gtk", "dep:javascriptcore-rs"]
+
+[lints]
+workspace = true

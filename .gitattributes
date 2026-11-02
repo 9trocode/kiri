@@ -1,0 +1,10 @@
+# Scripts that run in WSL or on Linux keep LF, even in a Windows checkout
+# (core.autocrlf would make install.sh fail under sh).
+*.sh text eol=lf
+# Files that run inside WSL or Linux, whatever their extension.
+contrib/wsl/kiri-linux/* text eol=lf
+contrib/linux/* text eol=lf
+# Linux packaging: maintainer scripts, unit, spec and wrapper, whatever their name.
+packaging/linux/** text eol=lf
+# Installer art is binary (brand/installer).
+*.bmp binary

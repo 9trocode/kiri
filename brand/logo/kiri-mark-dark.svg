@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256" role="img" aria-labelledby="t">
+  <title id="t">Kiri</title>
+  <g transform="translate(6 0) skewX(-10)">
+    <clipPath id="kdark-clip"><rect x="22" y="12" width="34" height="40" rx="10"/></clipPath>
+    <g fill="#E0B420"><rect x="22" y="12" width="34" height="40" rx="10"/></g>
+    <g clip-path="url(#kdark-clip)" fill="#F2CF5B"><rect x="10" y="0" width="60" height="21.5"/></g>
+    <g fill="#0F1419"><ellipse cx="41.5" cy="29" rx="3.1" ry="3.6"/><ellipse cx="50.5" cy="29" rx="3.1" ry="3.6"/></g>
+  </g>
+  <g fill="#F6F2EA"><rect x="5" y="21.5" width="13" height="5" rx="2.5"/><rect x="1" y="32" width="15" height="5" rx="2.5"/><rect x="7" y="42.5" width="7" height="5" rx="2.5"/></g>
+</svg>

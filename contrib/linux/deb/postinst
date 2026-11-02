@@ -1,0 +1,22 @@
+#!/bin/sh
+# Kiri's engine as a system service; whoever ran apt joins the kiri group
+# and gets the kiri docker context.
+set -e
+if [ "$1" = configure ]; then
+    getent group kiri >/dev/null || addgroup --system kiri
+    if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != root ] && id "$SUDO_USER" >/dev/null 2>&1; then
+        adduser "$SUDO_USER" kiri >/dev/null || true
+        # The CLI's context, made as that person so it lands in their ~/.docker.
+        su - "$SUDO_USER" -c 'docker context inspect kiri >/dev/null 2>&1 || docker context create kiri --docker host=unix:///run/kiri/docker.sock >/dev/null' || true
+        su - "$SUDO_USER" -c 'docker context use kiri >/dev/null' || true
+        echo "Kiri: $SUDO_USER is in the kiri group. Log out and back in once for it to apply."
+    else
+        echo "Kiri: add yourself to the kiri group (sudo adduser \$USER kiri), then log out and back in."
+    fi
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable kiri.service >/dev/null 2>&1 || true
+        systemctl restart kiri.service || true
+    fi
+fi
+exit 0

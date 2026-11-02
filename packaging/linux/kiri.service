@@ -1,0 +1,39 @@
+# Kiri on a Linux host, as the .deb and .rpm install it: containers on this
+# machine's kernel, no VM. Users in the `kiri` group reach the API at
+# unix:///run/kiri/docker.sock:
+#   docker context create kiri --docker host=unix:///run/kiri/docker.sock
+# and, while no Docker engine has it, at /var/run/docker.sock too.
+[Unit]
+Description=Kiri container engine
+Documentation=https://runkiri.com
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/kiri daemon
+Environment=KIRI_SOCKET=/run/kiri/docker.sock
+Environment=KIRI_SOCKET_GROUP=kiri
+Environment=HOME=/var/lib/kiri-daemon
+# The daemon creates the cgroups its containers run in.
+Delegate=yes
+KillMode=mixed
+Restart=on-failure
+# Tools that ignore docker contexts (docker-py, Go's client.FromEnv,
+# docker-java, Testcontainers, IDE plugins) look for /var/run/docker.sock
+# (/run/docker.sock): when nothing is there, it links to Kiri's socket, whose
+# 0660 root:kiri is what counts. Docker's docker.socket or dockerd replaces
+# a link when it starts, so Docker keeps the path whenever it runs, and the
+# link goes when Kiri stops, if it is still Kiri's.
+ExecStartPost=-/bin/sh -c '[ "$$(readlink /run/docker.sock)" = /run/kiri/docker.sock ] || [ -e /run/docker.sock ] || [ -L /run/docker.sock ] || ln -s /run/kiri/docker.sock /run/docker.sock'
+ExecStopPost=-/bin/sh -c '[ "$$(readlink /run/docker.sock)" != /run/kiri/docker.sock ] || rm -f /run/docker.sock'
+RuntimeDirectory=kiri
+# 0755: members of kiri reach the socket (itself 0660 root:kiri) through it.
+RuntimeDirectoryMode=0755
+StateDirectory=kiri-daemon
+StateDirectoryMode=0700
+# What the daemon writes is for root and the kiri group only (/var/lib/kiri
+# itself is 0710: kiri-init sets that, and its own umask, when it starts).
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

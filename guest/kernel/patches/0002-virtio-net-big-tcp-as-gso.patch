@@ -1,0 +1,67 @@
+# Header: Virtualization.framework's NAT delivers the Mac's TCP traffic to
+# the guest as packets of up to 64 KiB (coalesced, DF clear, no GSO type).
+# Forwarded into a container, as published ports are, the kernel cut each
+# into ~44 MTU-size IP fragments for the container to reassemble: one CPU
+# in softirq and ~9 Gbit/s. Marking them as TCP GSO packets with MTU-size
+# segments (what GRO builds) lets them pass the bridge and veth whole.
+--- a/drivers/net/virtio_net.c
++++ b/drivers/net/virtio_net.c
+@@ -26,6 +26,7 @@
+ #include <net/netdev_rx_queue.h>
+ #include <net/netdev_queues.h>
+ #include <net/xdp_sock_drv.h>
++#include <linux/tcp.h>
+ 
+ static int napi_weight = NAPI_POLL_WEIGHT;
+ module_param(napi_weight, int, 0444);
+@@ -2580,7 +2581,42 @@
+ 	}
+ 	skb_set_hash(skb, virtio_net_hash_value(hdr_hash), rss_hash_type);
+ }
++
++/* Kiri: Virtualization.framework's NAT hands the guest TCP packets of up to
++ * 64 KiB, coalesced from the Mac's segments, with DF clear and no segment
++ * size. Delivered locally that is fine; forwarded to a container (published
++ * ports) each one was cut into MTU-size IP fragments for the container to
++ * reassemble. Describe them as GRO would have built them, a TCP packet of
++ * MTU-size segments, so forwarding passes them on whole.
++ */
++static void virtnet_kiri_big_tcp(struct net_device *dev, struct sk_buff *skb)
++{
++	const struct iphdr *iph;
++	const struct tcphdr *th;
++	unsigned int ihl, hlen, mss;
+ 
++	if (skb->protocol != htons(ETH_P_IP) || skb->len <= dev->mtu || skb_is_gso(skb))
++		return;
++	if (skb->ip_summed != CHECKSUM_UNNECESSARY && skb->ip_summed != CHECKSUM_PARTIAL)
++		return;
++	if (!pskb_may_pull(skb, sizeof(struct iphdr)))
++		return;
++	iph = (const struct iphdr *)skb->data;
++	ihl = iph->ihl * 4;
++	if (ihl < sizeof(struct iphdr) || iph->protocol != IPPROTO_TCP || ip_is_fragment(iph) ||
++	    ntohs(iph->tot_len) != skb->len || !pskb_may_pull(skb, ihl + sizeof(struct tcphdr)))
++		return;
++	iph = (const struct iphdr *)skb->data;
++	th = (const struct tcphdr *)(skb->data + ihl);
++	hlen = ihl + th->doff * 4;
++	if (th->doff < 5 || th->syn || th->fin || th->rst || hlen + 8 > dev->mtu || skb->len <= hlen)
++		return;
++	mss = dev->mtu - hlen;
++	skb_shinfo(skb)->gso_size = mss;
++	skb_shinfo(skb)->gso_type = SKB_GSO_TCPV4 | (th->cwr ? SKB_GSO_TCP_ECN : 0);
++	skb_shinfo(skb)->gso_segs = DIV_ROUND_UP(skb->len - hlen, mss);
++}
++
+ static void virtnet_receive_done(struct virtnet_info *vi, struct receive_queue *rq,
+ 				 struct sk_buff *skb, u8 flags)
+ {
+@@ -2611,6 +2647,7 @@
+ 
+ 	skb_record_rx_queue(skb, vq2rxq(rq->vq));
+ 	skb->protocol = eth_type_trans(skb, dev);
++	virtnet_kiri_big_tcp(dev, skb);
+ 	pr_debug("Receiving skb proto 0x%04x len %i type %i\n",
+ 		 ntohs(skb->protocol), skb->len, skb->pkt_type);
+ 

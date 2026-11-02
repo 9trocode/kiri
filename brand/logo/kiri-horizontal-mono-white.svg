@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150.4 64" width="601.6" height="256" role="img" aria-labelledby="t">
+  <title id="t">Kiri</title>
+  <mask id="kmonowhite-m" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+    <g transform="translate(6 0) skewX(-10)"><g fill="#fff"><rect x="22" y="12" width="34" height="40" rx="10"/></g><g fill="#000"><ellipse cx="41.5" cy="29" rx="3.1" ry="3.6"/><ellipse cx="50.5" cy="29" rx="3.1" ry="3.6"/><rect x="10" y="20.5" width="60" height="2"/></g></g>
+  </mask>
+  <g fill="#F6F2EA">
+    <rect width="64" height="64" mask="url(#kmonowhite-m)"/>
+    <rect x="5" y="21.5" width="13" height="5" rx="2.5"/><rect x="1" y="32" width="15" height="5" rx="2.5"/><rect x="7" y="42.5" width="7" height="5" rx="2.5"/>
+  </g>
+  <g transform="translate(76 7.2) scale(0.8)"><g fill="none" stroke="#F6F2EA" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 14.5V51.5"/>
+    <path d="M29 30.5L8 46"/>
+    <path d="M16.5 40.5L29.5 51.5"/>
+    <path d="M45 30.5V51.5"/>
+    <path d="M61 51.5V41C61 34 66 30.5 74 30.5"/>
+    <path d="M88.5 30.5V51.5"/>
+  </g>
+  <g fill="#F6F2EA">
+    <rect x="40.5" y="10.5" width="9" height="9" rx="2.4" transform="rotate(-10 45 15)"/>
+    <rect x="84" y="10.5" width="9" height="9" rx="2.4" transform="rotate(-10 88.5 15)"/>
+  </g></g>
+</svg>

@@ -1,0 +1,3 @@
+# Items the window may show on some systems and not others, one per line:
+#   <item exactly as parity.js reports it> | <why>
+# Anything not listed here must ship on macOS, Windows and Linux together.

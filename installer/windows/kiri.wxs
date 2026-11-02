@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Kiri for Windows: a per-user MSI around the bundle `cargo xtask windows`
+  builds (target/kiri-windows-x86_64). It lays the bundle in %LOCALAPPDATA%\Kiri,
+  the folder kiri-win.exe uses anyway, adds a Start menu entry and an
+  Apps & features row, and opens Kiri at the end: Kiri's own first-run setup
+  then installs WSL if needed, imports the engine, and puts the docker CLI on
+  PATH, per user, with no administrator rights. Removing it runs
+  kiri.ps1 -Uninstall -IfSetUp (engine out of WSL, PATH and docker context
+  undone) and deletes the folder.
+
+  Build (or `cargo xtask msi`, which builds the bundle first):
+    wix build -arch x64 -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext
+      -d Version=<version> -d Bundle=..\..\target\kiri-windows-x86_64 -d Size="152.6 MB"
+      -loc kiri.wxl -o ..\..\target\Kiri-<version>-x86_64.msi kiri.wxs
+
+  Windows on Arm (`cargo xtask msi`, arch arm64) is the same source with
+  -arch arm64, -d Bundle=..\..\target\kiri-windows-aarch64 and -o
+  ..\..\target\Kiri-<version>-arm64.msi: the Platform is Arm64, the custom action
+  DLL Wix4UtilCA_A64 ($(sys.BUILDARCHSHORT)), and nothing else differs. A
+  per-user install has no Program Files folder to choose, so there is no
+  ProgramFiles64Folder/ProgramFilesArm64 question either.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!-- The version comes from Cargo.toml; cargo xtask msi passes it. -->
+  <?ifndef Version ?><?error Pass -d Version=x.y.z (cargo xtask msi does, from Cargo.toml) ?><?endif?>
+  <?ifndef Bundle ?><?define Bundle = "..\..\target\kiri-windows-x86_64" ?><?endif?>
+  <!-- What the install takes on disk, as the ready page says it: xtask measures the bundle. -->
+  <?ifndef Size ?><?define Size = "" ?><?endif?>
+  <?define Name = "Kiri" ?>
+  <?define Manufacturer = "Kiri" ?>
+  <?define Url = "https://runkiri.com" ?>
+  <?define Description = "Tiny, fast container runtime" ?>
+  <?define Keywords = "containers, docker, wsl, runtime" ?>
+
+  <!--
+    The UpgradeCode never changes; it is what makes a newer MSI replace an older one.
+    The x64 and arm64 MSIs share it, on purpose: both install the same files
+    into the same %LOCALAPPDATA%\Kiri with the same HKCU keys and component
+    GUIDs, so two products side by side would fight over one folder. Shared,
+    the arm64 MSI replaces an x64 Kiri put on an Arm PC by mistake (as a
+    major upgrade, AllowSameVersionUpgrades even at the same version), and
+    the reverse. kiri-win's updater checks the MSI's platform as well as
+    this code, and reads its own feed per architecture, so an update never
+    swaps architectures.
+  -->
+  <Package Name="$(Name)"
+           Manufacturer="$(Manufacturer)"
+           Version="$(Version)"
+           UpgradeCode="7C2E4B9A-5D13-4F8E-9B6A-0E1D3C5A7F21"
+           Scope="perUser"
+           Language="1033"
+           Codepage="1252"
+           InstallerVersion="500"
+           Compressed="yes">
+
+    <SummaryInformation Keywords="$(Keywords)"
+                        Description="$(Description)"
+                        Comments="$(Description). Docker API on Windows with the engine in WSL2."
+                        Manufacturer="$(Manufacturer)" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of $(Name) is already installed."
+                  AllowSameVersionUpgrades="yes"
+                  Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="KiriIcon" SourceFile="..\..\brand\icon\windows\kiri.ico" />
+    <Property Id="ARPPRODUCTICON" Value="KiriIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="$(Url)" />
+    <Property Id="ARPURLUPDATEINFO" Value="$(Url)" />
+    <Property Id="ARPHELPLINK" Value="$(Url)" />
+    <Property Id="ARPCONTACT" Value="$(Manufacturer)" />
+    <Property Id="ARPCOMMENTS" Value="$(Description)" />
+    <!--
+      The folder tree util:RemoveFolderEx deletes on uninstall: Kiri's own
+      %LOCALAPPDATA%\Kiri, with what the app wrote there (setup.json, logs,
+      the WebView2 cache, and wsl\kiri\ext4.vhdx, the Kiri Linux distro's
+      disk, which kiri.ps1 unregisters first). The registry value goes into
+      KIRIDIR_FOUND and is copied to KIRIDIR only when this product is
+      already installed and not being replaced: in a major upgrade
+      (UPGRADINGPRODUCTCODE is set while the old product is removed) KIRIDIR
+      stays empty, RemoveFolderEx does nothing, and the user's data
+      survives. A value that is not <LocalAppData>\Kiri\ (a
+      tampered registry, or KIRIDIR given on the command line) is blanked.
+    -->
+    <Property Id="KIRIDIR_FOUND">
+      <RegistrySearch Root="HKCU" Key="Software\$(Manufacturer)" Name="InstallDir" Type="raw" />
+    </Property>
+    <Property Id="KIRIDIR" Secure="yes" />
+    <SetProperty Id="KIRIDIR_HOME" Value="[LocalAppDataFolder]$(Name)\" After="AppSearch" Sequence="execute" />
+    <SetProperty Id="KIRIDIR" Value="[KIRIDIR_FOUND]" After="SetKIRIDIR_HOME" Sequence="execute" Condition="Installed AND NOT UPGRADINGPRODUCTCODE" />
+    <SetProperty Id="KIRIDIR" Action="ResetKIRIDIR" Value="{}" After="SetKIRIDIR" Sequence="execute" Condition="NOT (KIRIDIR ~= KIRIDIR_HOME)" />
+
+    <!-- %LOCALAPPDATA%\Kiri: kiri-win.exe keeps setup.json, logs and the WebView2 cache here too. -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="$(Name)">
+        <Directory Id="BinFolder" Name="bin">
+          <Directory Id="PluginsFolder" Name="cli-plugins" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <!--
+      Per-user components key on HKCU values, not files (ICE38). The bundle
+      files keep their names and places: kiri-win verifies each of them
+      against the SHA-256 embedded at build time before it imports or copies
+      anything.
+    -->
+    <ComponentGroup Id="KiriComponents">
+      <Component Id="KiriApp" Directory="INSTALLFOLDER" Guid="2B7D9F41-6A3C-4E85-B1D2-8C4F6A0E3B57">
+        <RegistryValue Root="HKCU" Key="Software\$(Manufacturer)" Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\$(Manufacturer)" Name="Version" Type="string" Value="$(Version)" />
+        <File Id="KiriWinExe" Source="$(Bundle)\kiri-win.exe" />
+        <File Id="KiriEngine" Source="$(Bundle)\kiri" />
+        <File Id="KiriInit" Source="$(Bundle)\kiri-init" />
+        <File Id="KiriLinux" Source="$(Bundle)\kiri-linux.tar.gz" />
+        <File Id="InstallSh" Source="$(Bundle)\install.sh" />
+        <File Id="KiriPs1" Source="$(Bundle)\kiri.ps1" />
+        <File Id="KiriLicense" Source="$(Bundle)\LICENSE" />
+        <File Id="KiriNotice" Source="$(Bundle)\NOTICE" />
+        <!-- Run by kiri-win as files (-File), never as script text it carries: setup's tools step, and its elevated steps (WSL, the DNS rule). -->
+        <File Id="SetupToolsPs1" Source="$(Bundle)\setup-tools.ps1" />
+        <File Id="KiriAdminPs1" Source="$(Bundle)\kiri-admin.ps1" />
+        <Shortcut Id="StartMenuShortcut"
+                  Directory="ProgramMenuFolder"
+                  Name="$(Name)"
+                  Description="$(Description)"
+                  Target="[#KiriWinExe]"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="KiriIcon" />
+        <util:RemoveFolderEx On="uninstall" Property="KIRIDIR" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+      </Component>
+      <Component Id="KiriDockerCli" Directory="BinFolder" Guid="9E5A1C73-0B2D-4F6E-A8C1-3D7B5E9F2A64">
+        <RegistryValue Root="HKCU" Key="Software\$(Manufacturer)" Name="Bin" Type="string" Value="[BinFolder]" KeyPath="yes" />
+        <File Id="DockerExe" Source="$(Bundle)\bin\docker.exe" />
+        <!-- `kiri` in PowerShell, cmd and Git Bash (crates/kiri/src/wsl.rs). -->
+        <File Id="KiriCliExe" Source="$(Bundle)\bin\kiri.exe" />
+        <RemoveFolder Id="RemoveBinFolder" Directory="BinFolder" On="uninstall" />
+      </Component>
+      <Component Id="KiriDockerPlugins" Directory="PluginsFolder" Guid="4F8B2D16-7C9E-4A3B-9D5F-1E6C8A0B4D72">
+        <RegistryValue Root="HKCU" Key="Software\$(Manufacturer)" Name="Plugins" Type="string" Value="[PluginsFolder]" KeyPath="yes" />
+        <File Id="ComposeExe" Source="$(Bundle)\bin\cli-plugins\docker-compose.exe" />
+        <File Id="BuildxExe" Source="$(Bundle)\bin\cli-plugins\docker-buildx.exe" />
+        <RemoveFolder Id="RemovePluginsFolder" Directory="PluginsFolder" On="uninstall" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="$(Name)" Level="1">
+      <ComponentGroupRef Id="KiriComponents" />
+    </Feature>
+
+    <!-- A running Kiri is closed before its files are replaced or removed. -->
+    <util:CloseApplication Id="CloseKiriWin" Target="kiri-win.exe" CloseMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+
+    <!--
+      Uninstall: undo what first-run setup did (engine in WSL, PATH, docker
+      context and builder, start at sign-in). kiri.ps1 does nothing when
+      setup never completed, so removing an unused install is just files.
+      System64Folder is the 64-bit PowerShell: for the 32-bit msiexec,
+      SystemFolder is SysWOW64, and a 32-bit PowerShell from there sees
+      SysWOW64 in place of System32, where wsl.exe is not. The script logs
+      to %TEMP%\kiri-uninstall.log (INSTALLFOLDER is going).
+    -->
+    <CustomAction Id="KiriUninstall"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File &quot;[INSTALLFOLDER]kiri.ps1&quot; -Uninstall -IfSetUp"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="KiriUninstall" After="InstallInitialize" Condition="REMOVE~=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+
+    <!--
+      The pages, as drawn in the Kiri Installer Windows design: Welcome,
+      licence, ready, progress, done. All but the ready page are stock
+      WixUI dialogs. It is WixUI_InstallDir without its folder page:
+      kiri-win runs from %LOCALAPPDATA%\Kiri and nowhere else, so the
+      folder is not a choice; the ready page (KiriReadyDlg, below) shows
+      it instead, with the size and the scope. Repair and remove still go
+      through the stock VerifyReadyDlg.
+      The art is committed in brand\installer\windows: wix-dialog.bmp (night
+      panel at the left, white under the text) and wix-banner.bmp (chalk,
+      the lockup at the right). `cargo xtask msi` stamps the version onto a
+      copy of the dialog (make-bitmaps.ps1 -Stamp, no browser needed, so CI
+      builds from the checkout) and points Assets at it. The texts are in
+      kiri.wxl.
+    -->
+    <?ifndef Assets ?><?define Assets = "..\..\brand\installer\windows" ?><?endif?>
+    <WixVariable Id="WixUIBannerBmp" Value="$(Assets)\wix-banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(Assets)\wix-dialog.bmp" />
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+    <UI Id="WixUI_Kiri">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Segoe UI" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Segoe UI" Size="9" Bold="yes" />
+      <!-- The ready page's table: labels in the design's slate, values in the system monospace. -->
+      <TextStyle Id="Kiri_Font_Label" FaceName="Segoe UI" Size="9" Red="58" Green="66" Blue="76" />
+      <TextStyle Id="Kiri_Font_Mono" FaceName="Consolas" Size="9" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <Property Id="ARPNOMODIFY" Value="1" />
+
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="Installed AND PATCH" />
+
+      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="KiriReadyDlg" Condition="LicenseAccepted = &quot;1&quot;" />
+
+      <Publish Dialog="KiriReadyDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg" />
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="1" Condition="Installed AND NOT PATCH" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" Condition="Installed AND PATCH" />
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+
+      <!-- The last page offers to launch Kiri, which runs first-run setup. -->
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchKiri"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+
+      <!--
+        The ready page of a fresh install, as the design draws it: the stock
+        VerifyReadyDlg's words, then the folder, the size and the scope in a
+        table, since there was no folder page to say them. Its measurements
+        are VerifyReadyDlg's (370 by 270 dialog units, the banner 44 high).
+      -->
+      <Dialog Id="KiriReadyDlg" Width="370" Height="270" Title="!(loc.VerifyReadyDlg_Title)">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="300" Height="15" Transparent="yes" NoPrefix="yes" Text="!(loc.KiriReadyTitle)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="Description" Type="Text" X="25" Y="60" Width="320" Height="30" Transparent="yes" NoPrefix="yes" Text="!(loc.VerifyReadyDlgInstallText)" />
+        <Control Id="FolderLabel" Type="Text" X="25" Y="104" Width="40" Height="12" Transparent="yes" NoPrefix="yes" Text="!(loc.KiriReadyFolder)" />
+        <Control Id="FolderValue" Type="Text" X="70" Y="104" Width="280" Height="12" Transparent="yes" NoPrefix="yes" Text="{\Kiri_Font_Mono}[INSTALLFOLDER]" />
+        <Control Id="SizeLabel" Type="Text" X="25" Y="122" Width="40" Height="12" Transparent="yes" NoPrefix="yes" Text="!(loc.KiriReadySize)" />
+        <Control Id="SizeValue" Type="Text" X="70" Y="122" Width="280" Height="12" Transparent="yes" NoPrefix="yes" Text="{\Kiri_Font_Mono}$(Size)" />
+        <Control Id="ScopeLabel" Type="Text" X="25" Y="140" Width="40" Height="12" Transparent="yes" NoPrefix="yes" Text="!(loc.KiriReadyScope)" />
+        <Control Id="ScopeValue" Type="Text" X="70" Y="140" Width="280" Height="12" Transparent="yes" NoPrefix="yes" Text="!(loc.KiriReadyScopeValue)" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
+        <Control Id="Install" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.VerifyReadyDlgInstall)">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+    </UI>
+    <UIRef Id="WixUI_Common" />
+
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="!(loc.KiriExitCheckbox)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="!(loc.KiriExitText)" />
+    <Property Id="WixShellExecTarget" Value="[#KiriWinExe]" />
+    <CustomAction Id="LaunchKiri" DllEntry="WixShellExec" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" Impersonate="yes" Return="ignore" />
+  </Package>
+</Wix>

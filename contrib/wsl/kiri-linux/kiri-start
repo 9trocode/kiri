@@ -1,0 +1,17 @@
+#!/bin/sh
+# Starts Kiri's engine after setup or when kiri-win wakes the distro.
+# The daemon serves its unix socket; kiri-win carries the Windows docker CLI
+# to it over `kiri bridge`.
+export HOME=/var/lib/kiri-daemon
+mkdir -p "$HOME" /var/log
+pgrep -f '/usr/local/bin/kiri daemon' >/dev/null 2>&1 && exit 0
+rm -f "$HOME/.kiri/run/docker.sock"
+nohup /usr/local/bin/kiri daemon >>/var/log/kiri.log 2>&1 &
+i=0
+while [ "$i" -lt 50 ]; do
+  [ -S "$HOME/.kiri/run/docker.sock" ] && exit 0
+  sleep 0.1
+  i=$((i + 1))
+done
+echo "kiri daemon did not create its socket; see /var/log/kiri.log" >&2
+exit 1

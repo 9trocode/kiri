@@ -1,0 +1,11 @@
+#!/bin/sh
+# Purge takes the engine's data (containers, images, volumes) and the group.
+set -e
+if [ "$1" = purge ]; then
+    rm -rf /var/lib/kiri-daemon
+    getent group kiri >/dev/null && delgroup --system kiri >/dev/null 2>&1 || true
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+exit 0

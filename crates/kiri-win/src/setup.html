@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiri Setup</title>
+<style>
+:root{
+  --bg:#0F1419; --rail:#131920; --surface:#171E26; --sunk:#0B0F13; --line:#26303A; --line-2:#1B232C; --stroke:#3A4652;
+  --ink:#F6F2EA; --text-2:#C9CDD2; --muted:#9AA3AE;
+  --ember:#E0B420; --lid:#F2CF5B; --ember-text:#E8C04A; --ember-deep:#CC9A0C;
+  --moss:#5CC99A; --bad:#F28B82; --primary:#0D6EFD; --primary-hover:#0B5ED7;
+  --f-text:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --f-display:"Segoe UI Variable Display","Segoe UI",sans-serif;
+  --f-mono:"Cascadia Mono",Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg)}
+body{color:var(--ink);font:15px/1.4 var(--f-text);overflow:hidden;-webkit-font-smoothing:antialiased}
+[hidden]{display:none !important}
+a{color:var(--ember-text)} a:hover{color:var(--lid)}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--lid);outline-offset:2px;border-radius:4px}
+h1[tabindex="-1"]:focus{outline:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mono{font-family:var(--f-mono)}
+
+.app{display:flex;height:100vh;min-height:0}
+
+/* rail */
+.rail{width:280px;flex:none;padding:32px 28px;background:var(--rail);border-right:1px solid var(--line-2);display:flex;flex-direction:column;gap:28px;overflow-y:auto}
+.brand{display:flex;align-items:center;gap:10px;font:700 24px/1 var(--f-display)}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:22px;font-size:14px}
+.steps li{display:flex;gap:14px}
+.num{width:26px;height:26px;flex:none;border-radius:9999px;border:2px solid var(--line);color:var(--muted);font:12px/1 var(--f-mono);display:flex;align-items:center;justify-content:center}
+.steps .cur .num{border-color:var(--ember);color:var(--ember-text);font-weight:600}
+.steps .done .num{border:0;background:var(--moss);color:var(--bg)}
+.st{display:flex;flex-direction:column;gap:2px;padding-top:3px}
+.st-t{color:var(--text-2);font-weight:500}
+.cur .st-t,.done .st-t{color:var(--ink);font-weight:600}
+.st-s{font-size:12px;color:var(--muted)}
+.cur .st-s{color:var(--ember-text)} .done .st-s{color:var(--moss)} .cur .st-s.bad{color:var(--bad)}
+.rail-foot{margin:auto 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+
+/* main */
+main{flex:1;min-width:0;padding:44px 56px 28px;display:flex;flex-direction:column;gap:24px;overflow-y:auto}
+main.center{align-items:center;justify-content:center;text-align:center;gap:22px}
+main.choose{padding:36px 44px 28px}
+.head{display:flex;flex-direction:column;gap:8px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ember-text)}
+h1{margin:0;font:700 34px/1.1 var(--f-display)}
+h1.xl{font-size:40px;line-height:1.05}
+h1.l{font-size:36px}
+.lede{margin:0;font-size:15px;line-height:1.5;color:var(--text-2)}
+.lede.lg{font-size:17px;line-height:1.55;max-width:560px}
+.lede.md{font-size:16px;line-height:1.55;max-width:680px}
+.note{margin:0;font-size:13px;line-height:1.55;color:var(--muted);max-width:640px}
+.small{margin:0;font-size:12px;color:var(--muted)}
+.hero{display:flex;align-items:center;gap:36px;flex-wrap:wrap}
+.hero.sm{gap:24px;flex-wrap:nowrap}
+.hero-t{display:flex;flex-direction:column;gap:10px;flex:1;min-width:280px}
+.hero.sm .hero-t{gap:8px;min-width:0}
+.hero svg{flex:none}
+
+.card{border-radius:18px;background:var(--surface);border:1px solid var(--line);padding:26px;display:flex;flex-direction:column;gap:22px}
+.card.tight{gap:18px}
+.foot{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:auto;padding-top:4px}
+.grow{flex:1}
+
+.btn{height:40px;padding:0 18px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 14px var(--f-text);cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--line-2)}
+.btn:active{background:var(--line)}
+.btn.primary{border:0;background:var(--primary);color:#fff;font-weight:600;padding:0 20px}
+.btn.primary:hover{background:var(--primary-hover)}
+.btn.lg{height:44px}
+.btn.xl{height:44px;padding:0 28px;font-size:15px}
+.btn.sm{height:32px;padding:0 12px;font-size:13px}
+.btn:focus-visible{outline-offset:3px;border-radius:6px}
+
+/* welcome size block */
+.size{border-radius:18px;background:radial-gradient(80% 120% at 20% 50%,rgba(224,180,32,.12),rgba(224,180,32,0) 70%),var(--surface);border:1px solid var(--line);padding:32px 36px;display:flex;align-items:center;gap:28px}
+.size svg{flex:none}
+.size-t{display:flex;flex-direction:column;gap:8px;min-width:0}
+.size-n{font:600 clamp(44px,6vw,72px)/1 var(--f-mono);letter-spacing:-.02em}
+.size-s{font-size:16px;color:var(--text-2)}
+
+/* progress */
+.prog{display:flex;flex-direction:column;gap:10px}
+.prog-h{display:flex;align-items:baseline;gap:12px}
+.pct{font:600 30px/1.2 var(--f-mono)}
+.plabel{flex:1;font-size:14px;color:var(--text-2);min-width:0}
+.eta,.pmeta{font:13px var(--f-mono);color:var(--muted)}
+.pmeta{display:flex;gap:20px}
+.bar{height:10px;border-radius:9999px;background:var(--line);overflow:hidden;position:relative}
+.fill{height:100%;width:0;border-radius:9999px;background:linear-gradient(90deg,var(--ember-deep),var(--ember));transition:width .3s ease-out}
+.bar.ind .fill{position:absolute;left:0;top:0;width:32%;animation:slide 1.4s ease-in-out infinite}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}
+
+/* tasks */
+.tasks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px;font-size:15px}
+.tasks li{display:flex;align-items:center;gap:12px}
+.t-label{flex:1;min-width:0}
+.t-detail{font:13px var(--f-mono);color:var(--muted);text-align:right}
+.tasks .todo .t-label{color:var(--text-2)}
+.tasks .active .t-label{font-weight:600}
+.tasks .active .t-detail{color:var(--ember-text)}
+.tasks .error .t-detail{color:var(--bad)}
+.mark{width:22px;height:22px;flex:none;border-radius:9999px;display:flex;align-items:center;justify-content:center}
+.mark.done{background:var(--moss);color:var(--bg)}
+.mark.todo{border:2px solid var(--line)}
+.mark.error{border:2px solid var(--bad);color:var(--bad);background:rgba(242,139,130,.12);font:700 12px/1 var(--f-text)}
+.spin{border:3px solid var(--line);border-top-color:var(--ember);border-radius:9999px;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.log{margin:0;padding:14px 16px;border-radius:10px;background:var(--sunk);font:12.5px/1.6 var(--f-mono);color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:9.8em;overflow-y:auto}
+.log.hl .last{color:var(--ember-text)}
+.log.hl .last::after{content:" \258D";animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* error */
+.err{display:flex;align-items:center;gap:14px;padding:14px 16px 14px 18px;border-radius:12px;border:1px solid rgba(242,139,130,.45);background:rgba(242,139,130,.08);text-align:left;max-width:100%}
+.err-i{width:22px;height:22px;flex:none;border-radius:9999px;border:2px solid var(--bad);color:var(--bad);display:flex;align-items:center;justify-content:center;font:700 12px/1 var(--f-text)}
+.err-t{flex:1;font-size:14px;line-height:1.45;color:var(--ink);min-width:0}
+main.center .err{width:min(640px,100%)}
+
+/* choose */
+.opts{flex:1 0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.opt{position:relative;display:flex;flex-direction:column;border-radius:18px;background:var(--surface);border:2px solid var(--line);overflow:hidden;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.opt:hover{border-color:var(--stroke)}
+.opt:has(input:checked){border-color:var(--ember);box-shadow:0 0 0 6px rgba(224,180,32,.08)}
+.opt:has(input:focus-visible){outline:2px solid var(--lid);outline-offset:4px}
+.opt-art{height:168px;flex:none;background:var(--rail);border-bottom:1px solid var(--line)}
+.opt:has(input:checked) .opt-art{background:radial-gradient(120% 90% at 60% 40%,rgba(224,180,32,.16),rgba(224,180,32,0) 60%),var(--rail)}
+.opt-art svg{display:block;width:100%;height:100%}
+.opt-b{flex:1;display:flex;flex-direction:column;gap:14px;padding:20px 22px 22px}
+.opt-h{display:flex;align-items:center;gap:10px}
+.opt-h input{width:18px;height:18px;margin:0;accent-color:var(--ember);flex:none}
+.opt-h input:focus-visible{outline:none}
+.opt-n{font:700 22px/1.2 var(--f-display)}
+.badge{margin-left:auto;padding:3px 10px;border-radius:9999px;background:var(--ember);color:#1A1400;font-size:12px;font-weight:600}
+.opt-p{margin:0;font-size:14px;line-height:1.5;color:var(--text-2)}
+.facts{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px}
+.facts dt{font-size:12px;color:var(--muted)}
+.facts dd{margin:2px 0 0;font:600 15px var(--f-mono)}
+.pros{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text-2)}
+.pros .con{color:var(--muted)}
+.choose .foot .small{flex:1;line-height:1.5}
+/* The choice's button stays in view when the window is too short for both
+   cards (1024×768 and smaller): the cards scroll under it. */
+main.choose .foot{position:sticky;bottom:-24px;margin-bottom:-24px;padding:14px 0 24px;background:var(--bg);box-shadow:0 -12px 12px -12px rgba(0,0,0,.35);z-index:1}
+
+/* tools */
+.tools{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.tool{border-radius:14px;background:var(--surface);border:1px solid var(--line);padding:18px;display:flex;align-items:center;gap:14px}
+.tool.active{border:2px solid var(--ember);padding:17px}
+.tool.error{border-color:rgba(242,139,130,.55)}
+.ticon{width:40px;height:40px;flex:none;border-radius:10px;background:var(--rail);display:flex;align-items:center;justify-content:center;font:600 15px var(--f-mono);color:var(--ember-text)}
+.ticon .spin{width:18px;height:18px}
+.tt{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tname{font-weight:600}
+.tdetail{font:12px var(--f-mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tstate{font-weight:600;font-size:13px;color:var(--muted);white-space:nowrap}
+.tool.done .tstate{color:var(--moss)} .tool.active .tstate{color:var(--ember-text)} .tool.error .tstate{color:var(--bad)}
+.box{border-radius:14px;background:var(--rail);border:1px solid var(--line);padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.box-t{font-weight:600}
+.check{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.45;color:var(--text-2);cursor:pointer}
+.check input{margin:2px 0 0;width:16px;height:16px;accent-color:var(--primary);flex:none;cursor:pointer}
+.check.inline{align-items:center}
+.check.inline input{margin:0}
+
+/* ready */
+.cmd{display:flex;align-items:center;gap:12px;padding:14px 16px 14px 20px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font:15px var(--f-mono);max-width:100%}
+.cmd .p{color:var(--muted)}
+.cmd code{font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+@media (max-width:1100px){ main{padding:36px 36px 24px} main.choose{padding:32px 32px 24px} .rail{width:248px;padding:28px 22px} }
+@media (max-height:760px){ main{padding-top:28px;gap:18px} .opt-art{height:120px} .opt-b{gap:10px;padding:16px 18px 18px} .card{padding:20px;gap:16px} .size{padding:24px 28px} .steps{gap:18px} }
+@media (max-width:1000px){ .hero.lgx svg{width:170px;height:139px} .rail{width:224px;padding:24px 18px} main.choose{padding:24px 24px 24px} .opts{gap:14px} }
+@media (max-height:700px){ main{padding-top:22px;gap:14px} h1{font-size:28px} .lede.md{font-size:14.5px} .opt-art{height:88px} .opt-n{font-size:19px} .opt-b{gap:8px;padding:12px 16px 14px} .facts{gap:6px 14px} .pros{gap:3px} }
+@media (prefers-reduced-motion:reduce){
+  .spin{animation:none;border-color:var(--ember);border-right-color:var(--line);border-bottom-color:var(--line)}
+  .bar.ind .fill{animation:none;width:100%;opacity:.45;transform:none}
+  .log.hl .last::after{animation:none}
+  .fill,.opt{transition:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail" aria-label="Setup steps">
+    <div class="brand">
+      <svg viewBox="0 0 64 64" width="36" height="36" aria-hidden="true" focusable="false"><defs><clipPath id="su-rail"><rect x="22" y="12" width="34" height="40" rx="10"/></clipPath></defs><g transform="translate(6 0) skewX(-10)"><rect x="22" y="12" width="34" height="40" rx="10" fill="#E0B420"/><rect x="10" y="0" width="60" height="21.5" fill="#F2CF5B" clip-path="url(#su-rail)"/><ellipse cx="41.5" cy="29" rx="3.1" ry="3.6" fill="#0F1419"/><ellipse cx="50.5" cy="29" rx="3.1" ry="3.6" fill="#0F1419"/></g><g fill="#F6F2EA"><rect x="5" y="21.5" width="13" height="5" rx="2.5"/><rect x="1" y="32" width="15" height="5" rx="2.5"/><rect x="7" y="42.5" width="7" height="5" rx="2.5"/></g></svg>
+      <span>Kiri</span>
+    </div>
+    <ol class="steps" id="steps"></ol>
+    <p class="rail-foot" id="railFoot" hidden></p>
+  </aside>
+  <main id="main"></main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- host bridge ---------- */
+  function send(cmd, extra) {
+    try {
+      var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.kiri;
+      if (h) h.postMessage(JSON.stringify(Object.assign({ cmd: cmd }, extra || {})));
+    } catch (e) { /* host gone */ }
+  }
+
+  /* ---------- helpers ---------- */
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var isNum = function (v) { return typeof v === 'number' && isFinite(v); };
+  var mbN = function (b) { return Math.round(b / 1e6); };
+  var mb = function (b) { return isNum(b) ? mbN(b) + ' MB' : '—'; };
+  var setText = function (el, t) { t = t == null ? '' : String(t); if (el.textContent !== t) el.textContent = t; };
+  var linuxName = function (l, short) { return l === 'ubuntu' ? (short ? 'Ubuntu' : 'Ubuntu 26.04') : l === 'kiri' ? 'Kiri Linux' : 'Linux'; };
+  var STEPS = ['welcome', 'wsl', 'restart', 'choose', 'linux', 'engine', 'tools', 'ready'];
+  var RAIL = { welcome: 0, wsl: 0, restart: 0, choose: 1, linux: 1, engine: 2, tools: 3, ready: 4 };
+  var CHECK = '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var CHECK_RAIL = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var MONO = 'Cascadia Mono, Consolas, monospace';
+  var DISP = 'Segoe UI Variable Display, Segoe UI, sans-serif';
+
+  /* ---------- illustrations (decorative; copied from the design) ---------- */
+  var BODY = function (id, eyes) { return '<rect x="22" y="12" width="34" height="40" rx="10" fill="#E0B420"/><rect x="10" y="0" width="60" height="21.5" fill="#F2CF5B" clip-path="url(#' + id + ')"/>' + eyes; };
+  var CLIP = function (id) { return '<defs><clipPath id="' + id + '"><rect x="22" y="12" width="34" height="40" rx="10"/></clipPath></defs>'; };
+  var ARMS = '<g fill="#F6F2EA"><rect x="5" y="21.5" width="13" height="5" rx="2.5"/><rect x="1" y="32" width="15" height="5" rx="2.5"/><rect x="7" y="42.5" width="7" height="5" rx="2.5"/></g>';
+  var EYES = function (x1, x2, y, glint) {
+    return '<ellipse cx="' + x1 + '" cy="' + y + '" rx="3.1" ry="3.6" fill="#0F1419"/><ellipse cx="' + x2 + '" cy="' + y + '" rx="3.1" ry="3.6" fill="#0F1419"/>' +
+      (glint ? '<circle cx="' + (x1 + glint[0]) + '" cy="' + (y + glint[1]) + '" r="0.9" fill="#FFFFFF"/><circle cx="' + (x2 + glint[0]) + '" cy="' + (y + glint[1]) + '" r="0.9" fill="#FFFFFF"/>' : '');
+  };
+  var SVG = function (vb, w, h, inner) { return '<svg viewBox="' + vb + '" width="' + w + '" height="' + h + '" aria-hidden="true" focusable="false">' + inner + '</svg>'; };
+
+  var ART = {
+    welcome: SVG('0 0 220 180', 220, 180, CLIP('su-a1') +
+      '<circle cx="110" cy="92" r="84" fill="#E0B420" opacity="0.08"/><rect x="128" y="44" width="62" height="104" rx="8" fill="#171E26" stroke="#3A4652" stroke-width="2"/><circle cx="178" cy="98" r="3.5" fill="#9AA3AE"/>' +
+      '<text x="159" y="34" text-anchor="middle" font-family="' + MONO + '" font-size="12" fill="#9AA3AE">Linux</text><rect x="16" y="147" width="190" height="2" rx="1" fill="#26303A"/>' +
+      '<g transform="translate(18 62) scale(1.35)"><g transform="translate(6 0) skewX(-10)">' + BODY('su-a1', EYES(43, 52, 28, [1, -1.4])) + '</g>' + ARMS + '</g>'),
+    download: SVG('0 0 64 64', 72, 72, '<circle cx="32" cy="32" r="30" fill="#131920" stroke="#26303A" stroke-width="2"/><path d="M32 16 v26 m-11 -11 l11 11 l11 -11 M20 48 h24" fill="none" stroke="#E0B420" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>'),
+    restart: SVG('0 0 240 190', 240, 190, CLIP('su-a3') +
+      '<circle cx="120" cy="96" r="88" fill="#E0B420" opacity="0.08"/><path d="M188 96 a68 68 0 1 1 -20 -48" fill="none" stroke="#3A4652" stroke-width="8" stroke-linecap="round"/><path d="M172 26 l-2 26 l26 -4" fill="none" stroke="#3A4652" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<g transform="translate(70 58) scale(1.3)"><g transform="translate(6 0) skewX(-10)">' + BODY('su-a3', '<path d="M38.5 29.5 q3 2.4 6 0 M47.5 29.5 q3 2.4 6 0" fill="none" stroke="#0F1419" stroke-width="2" stroke-linecap="round"/>') + '</g></g>' +
+      '<text x="168" y="70" font-family="' + DISP + '" font-size="22" font-weight="700" fill="#E8C04A">z</text><text x="182" y="54" font-family="' + DISP + '" font-size="15" font-weight="700" fill="#E8C04A" opacity="0.7">z</text>'),
+    chooseKiri: function (label) {
+      return SVG('0 0 440 168', '100%', 168, CLIP('su-ck') +
+        '<path d="M30 140 L110 72 L150 104 L196 58 L262 120 L300 92 L360 140 Z" fill="#1B232C"/><path d="M196 58 L184 69 L192 67 L198 72 L205 66 L210 70 Z" fill="#26303A"/><rect x="20" y="139" width="400" height="2" rx="1" fill="#26303A"/>' +
+        '<g transform="translate(138 52) scale(1.35)"><g transform="translate(6 0) skewX(-10)">' + BODY('su-ck', EYES(42.5, 51.5, 29, [1.1, -1.4])) + '</g>' + ARMS + '</g>' +
+        '<g transform="translate(250 96)"><rect x="0" y="0" width="46" height="40" rx="7" fill="#1B232C" stroke="#E0B420" stroke-width="2"/><rect x="19" y="0" width="8" height="40" fill="#E0B420" opacity="0.55"/>' +
+        '<text x="23" y="-10" text-anchor="middle" font-family="' + MONO + '" font-size="13" font-weight="600" fill="#E8C04A">' + esc(label) + '</text></g>' +
+        '<circle cx="330" cy="46" r="3" fill="#E0B420" opacity="0.7"/><circle cx="352" cy="62" r="2" fill="#F2CF5B" opacity="0.6"/><circle cx="318" cy="72" r="1.6" fill="#F6F2EA" opacity="0.5"/>').replace('<svg ', '<svg preserveAspectRatio="xMidYMid meet" ');
+    },
+    chooseUbuntu: function (label) {
+      return SVG('0 0 440 168', '100%', 168, CLIP('su-cu') +
+        '<rect x="20" y="139" width="400" height="2" rx="1" fill="#26303A"/><path d="M262 46 a18 18 0 0 1 34 -8 a14 14 0 0 1 26 6 a12 12 0 0 1 -2 24 h-56 a11 11 0 0 1 -2 -22 z" fill="#1B232C" stroke="#3A4652" stroke-width="2"/>' +
+        '<path d="M290 74 v20 m-8 -8 l8 8 l8 -8" fill="none" stroke="#9AA3AE" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<g stroke="#3A4652" stroke-width="2" fill="#1B232C"><rect x="214" y="100" width="76" height="38" rx="6"/><rect x="292" y="100" width="76" height="38" rx="6"/></g>' +
+        '<g stroke="#26303A" stroke-width="2"><path d="M214 113 h76 M214 125 h76 M292 113 h76 M292 125 h76"/></g>' +
+        '<rect x="226" y="66" width="128" height="32" rx="6" fill="#1B232C" stroke="#3A4652" stroke-width="2"/>' +
+        '<text x="290" y="88" text-anchor="middle" font-family="' + MONO + '" font-size="14" font-weight="600" fill="#C9CDD2">' + esc(label) + '</text>' +
+        '<g transform="translate(96 82) scale(0.86)"><g transform="translate(6 0) skewX(-10)">' + BODY('su-cu', EYES(43, 52, 26.5, [1, -1.7])) + '</g></g>' +
+        '<text x="130" y="72" font-family="Segoe UI, sans-serif" font-size="18" font-weight="600" fill="#9AA3AE">?</text>');
+    },
+    linuxKiri: SVG('0 0 120 100', 120, 100, CLIP('su-a5') +
+      '<circle cx="60" cy="52" r="46" fill="#E0B420" opacity="0.1"/><g transform="translate(30 20) scale(0.8)"><g transform="translate(6 0) skewX(-10)">' + BODY('su-a5', EYES(42.5, 51.5, 29)) + '</g></g>' +
+      '<path d="M22 62 h76 l-6 30 h-64 z" fill="#1B232C" stroke="#E0B420" stroke-width="2" stroke-linejoin="round"/><path d="M22 62 l-10 -12 M98 62 l10 -12" stroke="#E0B420" stroke-width="2" stroke-linecap="round"/>'),
+    linuxUbuntu: SVG('0 0 120 100', 120, 100,
+      '<circle cx="60" cy="52" r="46" fill="#9AA3AE" opacity="0.08"/><path d="M36 32 a14 14 0 0 1 27 -6 a11 11 0 0 1 20 5 a9 9 0 0 1 -1 18 h-45 a8.5 8.5 0 0 1 -1 -17 z" fill="#1B232C" stroke="#3A4652" stroke-width="2"/>' +
+      '<path d="M60 52 v16 m-7 -7 l7 7 l7 -7" fill="none" stroke="#E0B420" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><g fill="#1B232C" stroke="#3A4652" stroke-width="1.5"><rect x="32" y="76" width="26" height="16" rx="3"/><rect x="62" y="76" width="26" height="16" rx="3"/></g>'),
+    engine: SVG('0 0 120 100', 120, 100, CLIP('su-a6') +
+      '<circle cx="60" cy="52" r="46" fill="#E0B420" opacity="0.1"/><g transform="translate(78 30)" fill="none" stroke="#3A4652" stroke-width="6"><circle r="16"/><path d="M0 -26 v8 M0 18 v8 M-26 0 h8 M18 0 h8 M-18 -18 l6 6 M12 12 l6 6 M18 -18 l-6 6 M-12 12 l-6 6" stroke-linecap="round"/></g>' +
+      '<g transform="translate(14 30) scale(0.95)"><g transform="translate(6 0) skewX(-10)">' + BODY('su-a6', EYES(42.5, 51.5, 29)) + '</g>' + ARMS + '</g>'),
+    ready: SVG('0 0 280 200', 280, 200, CLIP('su-a8') +
+      '<circle cx="140" cy="100" r="92" fill="#E0B420" opacity="0.1"/><ellipse cx="140" cy="182" rx="44" ry="6" fill="#0B0F13"/>' +
+      '<g transform="translate(84 18) scale(1.6)"><g transform="translate(6 0) skewX(-10)">' + BODY('su-a8', '<path d="M38.5 30 q3 -3 6 0 M47.5 30 q3 -3 6 0" fill="none" stroke="#0F1419" stroke-width="2.2" stroke-linecap="round"/>') + '</g>' + ARMS + '</g>' +
+      '<g><rect x="40" y="40" width="10" height="5" rx="2.5" fill="#E0B420" transform="rotate(-30 45 42)"/><rect x="226" y="54" width="10" height="5" rx="2.5" fill="#5CC99A" transform="rotate(25 231 56)"/><rect x="60" y="120" width="8" height="4" rx="2" fill="#F6F2EA" transform="rotate(40 64 122)"/><rect x="214" y="130" width="9" height="4" rx="2" fill="#F2CF5B" transform="rotate(-20 218 132)"/><circle cx="236" cy="96" r="3.5" fill="#E0B420"/><circle cx="40" cy="86" r="3" fill="#5CC99A"/><circle cx="198" cy="28" r="2.5" fill="#F6F2EA"/></g>')
+  };
+  var TOOL_ICON = {
+    docker: '&gt;_',
+    compose: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><g fill="none" stroke="#E8C04A" stroke-width="2"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="8" y="13" width="8" height="7" rx="1.5"/></g></svg>',
+    buildx: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M4 20 L10 8 L14 14 L16 11 L20 20 Z" fill="none" stroke="#E8C04A" stroke-width="2" stroke-linejoin="round"/></svg>',
+    build: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><g fill="none" stroke="#E8C04A" stroke-width="2" stroke-linejoin="round"><path d="M12 3 L20 7.5 V16.5 L12 21 L4 16.5 V7.5 Z"/><path d="M4 7.5 L12 12 L20 7.5 M12 12 V21"/></g></svg>'
+  };
+  function toolIcon(label) {
+    var l = String(label || '').toLowerCase();
+    if (l.indexOf('compose') >= 0) return TOOL_ICON.compose;
+    if (l.indexOf('buildx') >= 0) return TOOL_ICON.buildx;
+    if (l.indexOf('build') >= 0) return TOOL_ICON.build;
+    return TOOL_ICON.docker;
+  }
+
+  /* ---------- shared fragments ---------- */
+  var PROG = '<div class="prog" data-slot="progress" hidden><div class="prog-h"><span class="pct"></span><span class="plabel"></span><span class="eta"></span></div>' +
+    '<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div class="fill"></div></div><div class="pmeta"><span class="bytes"></span><span class="rate"></span></div></div>';
+  var TASKS = '<ol class="tasks" data-slot="tasks" hidden></ol>';
+  var LOG = function (hl) { return '<pre class="log' + (hl ? ' hl' : '') + '" data-slot="log" aria-label="Setup log" tabindex="0" hidden></pre>'; };
+  var ERR = '<div data-slot="error" role="alert"></div>';
+  var CANCEL = '<button type="button" class="btn" data-cmd="setup-cancel">Cancel</button>';
+  var hero = function (art, eyebrow, title, sub) {
+    return '<div class="hero sm">' + art + '<div class="hero-t"><span class="eyebrow">' + eyebrow + '</span><h1 tabindex="-1">' + title + '</h1><p class="lede">' + sub + '</p></div></div>';
+  };
+
+  /* ---------- screens (structure; live values are filled by update()) ---------- */
+  function screen(s) {
+    var sz = s.sizes || {};
+    switch (s.step) {
+      case 'wsl': return { cls: '', html:
+        '<div class="head"><span class="eyebrow">Step 1 of 5</span><h1 tabindex="-1">Installing Windows Subsystem for Linux</h1></div>' +
+        '<section class="card" aria-label="Progress">' + PROG + TASKS + '</section>' +
+        '<p class="note">Windows will need one restart when this finishes. Kiri will ask before restarting, so you can save your work first.</p>' +
+        ERR + '<div class="foot">' + CANCEL + '</div>' };
+
+      case 'restart': return { cls: 'center', html:
+        ART.restart + '<h1 class="l" tabindex="-1">One restart to finish WSL</h1>' +
+        '<p class="lede lg">Windows turns on Virtual Machine Platform while it starts up. Kiri opens again by itself afterwards and carries on from step 2. Save your work first.</p>' +
+        ERR + '<div style="display:flex;gap:12px;margin-top:8px"><button type="button" class="btn lg" data-cmd="setup-later">Restart later</button><button type="button" class="btn primary lg" style="padding:0 24px" data-cmd="setup-restart">Restart now</button></div>' +
+        '<p class="small">Later: Kiri waits in the tray and picks up after your next restart.</p>' };
+
+      case 'choose': {
+        var ex = !!s.existingUbuntu;
+        var kiriSize = isNum(sz.kiri) ? '≈ ' + mb(sz.kiri) : '';
+        var ubSize = isNum(sz.ubuntu) ? mb(sz.ubuntu) : '—';
+        var ratio = isNum(sz.kiri) && isNum(sz.ubuntu) && sz.kiri > 0 ? Math.round(sz.ubuntu / sz.kiri) : null;
+        return { cls: 'choose', html:
+          '<div class="head"><h1 tabindex="-1">Where should your containers run?</h1><p class="lede md">Kiri runs Linux containers inside WSL, in a Linux of its own. Both choices run the same containers at the same speed; they differ in size and in what else you get.</p></div>' +
+          '<div class="opts" role="radiogroup" aria-label="Linux for Kiri">' +
+            '<label class="opt"><div class="opt-art">' + ART.chooseKiri(kiriSize) + '</div><div class="opt-b">' +
+              '<div class="opt-h"><input type="radio" name="linux" value="kiri"><span class="opt-n">Kiri Linux</span><span class="badge">Recommended</span></div>' +
+              '<p class="opt-p">A tiny Linux made only for Kiri, built from Alpine. It stays out of sight and leaves with Kiri.</p>' +
+              '<dl class="facts"><div><dt>Download</dt><dd>Included</dd></div><div><dt>On disk</dt><dd>≈ 15 MB</dd></div><div><dt>Setup time</dt><dd>≈ 30 s*</dd></div><div><dt>Linux account</dt><dd>None</dd></div></dl>' +
+              '<ul class="pros"><li>+ No Microsoft Store, no username or password</li><li>+ Removed completely when you remove Kiri</li><li class="con">– Not a Linux to use yourself</li></ul>' +
+            '</div></label>' +
+            '<label class="opt"><div class="opt-art">' + ART.chooseUbuntu(ex ? 'installed' : ubSize) + '</div><div class="opt-b">' +
+              '<div class="opt-h"><input type="radio" name="linux" value="ubuntu"><span class="opt-n">Ubuntu 26.04</span></div>' +
+              (ex
+                ? '<p class="opt-p">Kiri will reuse the Ubuntu already installed on this PC. Kiri runs in it, and you keep opening it as your own Linux.</p>' +
+                  '<dl class="facts"><div><dt>Download</dt><dd>Nothing to download</dd></div><div><dt>On disk</dt><dd>Already there</dd></div><div><dt>Setup time</dt><dd>≈ 30 s*</dd></div><div><dt>Linux account</dt><dd>Yours</dd></div></dl>' +
+                  '<ul class="pros"><li>+ Uses the Ubuntu you already have: nothing to download</li><li>+ A complete Linux you can open from Start</li><li class="con">– Kiri shares it with your own Linux work</li></ul>'
+                : '<p class="opt-p">The full Ubuntu from Microsoft\'s WSL list. Kiri runs in it, and you can open it as your own Linux too.</p>' +
+                  '<dl class="facts"><div><dt>Download</dt><dd>' + ubSize + '</dd></div><div><dt>On disk</dt><dd>≈ 1.6 GB*</dd></div><div><dt>Setup time</dt><dd>≈ 2–4 min*</dd></div><div><dt>Linux account</dt><dd>Optional</dd></div></dl>' +
+                  '<ul class="pros"><li>+ A complete Linux you can open from Start</li><li>+ Already have Ubuntu? Kiri uses it: nothing to download</li>' +
+                  (ratio ? '<li class="con">– About ' + ratio + '× the download of Kiri Linux</li>' : '') + '</ul>') +
+            '</div></label>' +
+          '</div>' + ERR +
+          '<div class="foot"><p class="small">' + (ex ? 'Ubuntu is already on this PC, so choosing it downloads nothing.' : (isNum(sz.ubuntu) ? ubSize + ' is Ubuntu\'s download today.' : '')) + ' * Estimates until measured on a clean PC.</p>' +
+          '<button type="button" class="btn primary" data-act="choose" id="chooseBtn">Set up with Kiri Linux</button></div>' };
+      }
+
+      case 'linux':
+        if (s.linux === 'ubuntu') {
+          var exu = !!s.existingUbuntu;
+          return { cls: '', html:
+            hero(ART.linuxUbuntu, 'Step 2 of 5', exu ? 'Setting up Ubuntu 26.04' : 'Downloading Ubuntu 26.04', exu ? 'Using the Ubuntu already on this PC: nothing to download.' : 'From ubuntu.com, through Microsoft\'s WSL list.') +
+            '<section class="card" aria-label="Progress">' + PROG + TASKS + '</section>' +
+            '<p class="note">No Linux username is needed now: Kiri runs inside Ubuntu on its own. Ubuntu asks for one only the first time you open it yourself. * Estimate.</p>' +
+            ERR + '<div class="foot">' + (exu ? '' : '<button type="button" class="btn" data-cmd="setup-switch" data-value="kiri">Use Kiri Linux instead</button>') + CANCEL + '</div>' };
+        }
+        return { cls: '', html:
+          hero(ART.linuxKiri, 'Step 2 of 5', 'Setting up Kiri Linux', 'Nothing to download: it came inside Kiri.') +
+          '<section class="card" aria-label="Progress">' + PROG + TASKS + LOG(false) + '</section>' +
+          ERR + '<div class="foot">' + CANCEL + '</div>' };
+
+      case 'engine': return { cls: '', html:
+        hero(ART.engine, 'Step 3 of 5', 'Starting Kiri’s engine', 'The part that runs your containers, inside ' + esc(linuxName(s.linux, true)) + '.') +
+        '<section class="card tight" aria-label="Progress">' + PROG + TASKS + LOG(true) + '</section>' +
+        ERR + '<div class="foot">' + CANCEL + '</div>' };
+
+      case 'tools': return { cls: '', html:
+        '<div class="head"><span class="eyebrow">Step 4 of 5</span><h1 tabindex="-1">Setting up the Docker tools</h1><p class="lede">The same docker commands you know, talking to Kiri. Each file is checked against its pinned SHA-256.</p></div>' +
+        PROG + '<ul class="tools" data-slot="tools" aria-label="Docker tools"></ul>' +
+        '<section class="box"><span class="box-t" id="mkT">Make Kiri the default for docker</span>' +
+        '<label class="check"><input type="checkbox" id="mk" aria-describedby="mkT">' +
+        (s.otherDocker
+          ? 'docker, docker compose and docker build use Kiri in every new terminal. Another Docker was found on this PC; leave this off to keep using it as the default.'
+          : 'docker, docker compose and docker build use Kiri in every new terminal. No other Docker was found on this PC.') +
+        '</label></section>' +
+        // Another engine, and docker stays on it: which builds docker build.
+        (s.otherDocker
+          ? '<section class="box" data-slot="bw"><span class="box-t" id="bwT">Builds</span>' +
+            '<label class="check"><input type="radio" name="bw" value="docker" aria-describedby="bwT"><span><b>Keep building with Docker.</b> Nothing changes: docker build builds where it does now, and the images stay in ' + esc(s.otherEngine || 'your other Docker') + '.</span></label>' +
+            '<label class="check"><input type="radio" name="bw" value="kiri" aria-describedby="bwT"><span><b>Build with Kiri.</b> docker build and docker compose build run on Kiri, and the images are in Kiri. ' + esc(s.otherEngine || 'Your other Docker') + ' won’t see them. You can switch any time in Settings → Builds.</span></label></section>'
+          : '') + ERR + '<div class="foot">' + CANCEL + '</div>' };
+
+      case 'ready': return { cls: 'center', html:
+        ART.ready + '<h1 class="xl" tabindex="-1">Kiri is ready</h1>' +
+        '<p class="lede lg" style="max-width:540px">Your test container said hello. Open a new terminal and try it yourself:</p>' +
+        '<div class="cmd"><span class="p" aria-hidden="true">$</span><code>docker run --rm alpine echo hello</code><button type="button" class="btn sm" data-act="copy" aria-live="polite">Copy</button></div>' +
+        '<label class="check inline"><input type="checkbox" id="auto">Start Kiri when I sign in (in the tray)</label>' +
+        ERR + '<button type="button" class="btn primary xl" data-cmd="setup-open">Open Kiri</button>' };
+
+      default: return { cls: '', html: /* welcome */
+        '<div class="hero lgx">' + ART.welcome + '<div class="hero-t"><h1 class="xl" tabindex="-1">Welcome to Kiri</h1><p class="lede lg">Kiri runs Linux containers on Windows without Docker Desktop. It needs Windows Subsystem for Linux (WSL), Microsoft\'s own way to run Linux, which this PC doesn\'t have yet.</p></div></div>' +
+        '<section class="size">' + ART.download + '<div class="size-t"><span class="size-n">' + (isNum(sz.wsl) ? mb(sz.wsl) : '—') + '</span><span class="size-s">WSL, downloaded from Microsoft</span></div></section>' +
+        ERR + '<div class="foot"><a href="https://learn.microsoft.com/windows/wsl/about" data-open>What is WSL?</a><span class="grow"></span>' +
+        '<button type="button" class="btn" data-cmd="setup-quit">Quit</button><button type="button" class="btn primary" data-cmd="setup-install-wsl">Install WSL</button></div>' };
+    }
+  }
+
+  /* ---------- rail ---------- */
+  function rail(s) {
+    var step = s.step, cur = RAIL[step], p = s.progress;
+    var pct = p && isNum(p.pct) ? Math.round(p.pct) + '%' : '';
+    var showFuture = step === 'welcome' || step === 'wsl' || step === 'choose';
+    var tasks = Array.isArray(s.tasks) ? s.tasks : [];
+    var nDone = tasks.filter(function (t) { return t && t.state === 'done'; }).length;
+    var ln = linuxName(s.linux, true);
+    var items = [
+      { t: 'Windows Subsystem for Linux', f: '', c: step === 'wsl' ? 'Installing' + (pct ? ' · ' + pct : '') : step === 'restart' ? 'Needs a restart' : 'Now', d: 'Installed' },
+      { t: step === 'choose' ? 'Choose a Linux' : 'Linux', f: step === 'restart' ? 'After the restart' : 'Choose and install',
+        c: step === 'choose' ? 'Now' : s.linux === 'ubuntu' ? ('Ubuntu · ' + (s.existingUbuntu ? '' : 'downloading ') + pct).trim() : ln + (pct ? ' · ' + pct : ''), d: s.linux ? ln : '' },
+      { t: 'Kiri’s engine', f: 'Runs your containers', c: 'Starting', d: 'Running' },
+      { t: 'Docker tools', f: 'docker, Compose, buildx', c: tasks.length ? nDone + ' of ' + tasks.length : 'Now', d: '' },
+      { t: 'Ready', f: 'docker run, from any terminal', c: '', d: '' }
+    ];
+    var html = items.map(function (it, i) {
+      var state = step === 'ready' || i < cur ? 'done' : i === cur ? 'cur' : 'todo';
+      var sub = state === 'done' ? (step === 'ready' ? '' : it.d) : state === 'cur' ? (s.error ? 'Stopped' : it.c.replace(/ ·\s*$/, '')) : (showFuture || (step === 'restart' && i === 1) ? it.f : '');
+      var sr = state === 'done' ? ' (done)' : state === 'cur' ? ' (current step)' : '';
+      return '<li class="' + state + '"' + (state === 'cur' ? ' aria-current="step"' : '') + '><span class="num" aria-hidden="true">' + (state === 'done' ? CHECK_RAIL : i + 1) + '</span>' +
+        '<span class="st"><span class="st-t">' + it.t + '<span class="sr">' + sr + '</span></span>' + (sub ? '<span class="st-s' + (state === 'cur' && s.error ? ' bad' : '') + '">' + esc(sub) + '</span>' : '') + '</span></li>';
+    }).join('');
+    var steps = document.getElementById('steps');
+    if (steps.innerHTML !== html) steps.innerHTML = html;
+    var foot = { welcome: 'Kiri sets itself up for your Windows account only.', wsl: 'Keep using your PC meanwhile.', choose: 'Step 2 of 5. Nothing else on this PC changes: Kiri sets itself up for your Windows account only.' }[step];
+    var rf = document.getElementById('railFoot');
+    rf.hidden = !foot; setText(rf, foot || '');
+  }
+
+  /* ---------- live parts ---------- */
+  function updProgress(el, p) {
+    if (!el) return;
+    if (!p || typeof p !== 'object') { el.hidden = true; return; }
+    el.hidden = false;
+    var ind = !isNum(p.pct), pct = ind ? 0 : Math.max(0, Math.min(100, p.pct));
+    var pctEl = el.querySelector('.pct'); setText(pctEl, ind ? '' : Math.round(pct) + '%'); pctEl.hidden = ind;
+    setText(el.querySelector('.plabel'), p.label || '');
+    var eta = '';
+    if (isNum(p.eta) && p.eta >= 0) eta = p.eta >= 120 ? 'about ' + Math.round(p.eta / 60) + ' min left' : 'about ' + Math.max(1, Math.round(p.eta)) + ' s left';
+    setText(el.querySelector('.eta'), eta);
+    var bar = el.querySelector('.bar'), fill = bar.firstChild;
+    bar.classList.toggle('ind', ind);
+    fill.style.width = ind ? '' : pct + '%';
+    if (ind) bar.removeAttribute('aria-valuenow'); else bar.setAttribute('aria-valuenow', String(Math.round(pct)));
+    bar.setAttribute('aria-label', p.label || 'Progress');
+    var sized = isNum(p.total) && p.total > 0;
+    el.querySelector('.pmeta').hidden = !sized;
+    if (sized) {
+      setText(el.querySelector('.bytes'), (isNum(p.done) ? mbN(p.done) : 0) + ' of ' + mb(p.total));
+      setText(el.querySelector('.rate'), isNum(p.rate) && p.rate > 0 ? (p.rate / 1e6).toFixed(1) + ' MB/s' : '');
+    }
+  }
+
+  var STATE_WORD = { done: 'done', active: 'in progress', todo: 'to do', error: 'failed' };
+  var normState = function (st) { return STATE_WORD[st] ? st : 'todo'; };
+
+  function updTasks(ol, tasks) {
+    if (!ol) return;
+    tasks = Array.isArray(tasks) ? tasks.filter(Boolean) : [];
+    while (ol.children.length > tasks.length) ol.lastChild.remove();
+    tasks.forEach(function (t, i) {
+      var li = ol.children[i];
+      if (!li) {
+        li = document.createElement('li');
+        li.innerHTML = '<span class="mark" aria-hidden="true"></span><span class="t-label"></span><span class="sr"></span><span class="t-detail"></span>';
+        ol.appendChild(li);
+      }
+      var st = normState(t.state);
+      if (li.dataset.state !== st) {
+        li.dataset.state = st; li.className = st;
+        var m = li.children[0];
+        m.className = 'mark ' + (st === 'active' ? 'spin' : st);
+        m.innerHTML = st === 'done' ? CHECK : st === 'error' ? '!' : '';
+      }
+      setText(li.children[1], t.label);
+      setText(li.children[2], ', ' + STATE_WORD[st]);
+      setText(li.children[3], t.detail != null ? t.detail : '');
+    });
+    ol.hidden = !tasks.length;
+  }
+
+  var TOOL_STATE = { done: '✓ Installed', active: 'Setting up', todo: 'Waiting', error: 'Failed' };
+  function updTools(ul, tasks) {
+    if (!ul) return;
+    tasks = Array.isArray(tasks) ? tasks.filter(Boolean) : [];
+    while (ul.children.length > tasks.length) ul.lastChild.remove();
+    tasks.forEach(function (t, i) {
+      var li = ul.children[i];
+      if (!li) {
+        li = document.createElement('li');
+        li.innerHTML = '<span class="ticon" aria-hidden="true"></span><span class="tt"><span class="tname"></span><span class="tdetail"></span></span><span class="tstate"></span>';
+        ul.appendChild(li);
+      }
+      var st = normState(t.state), key = st + '|' + t.label;
+      if (li.dataset.key !== key) {
+        li.dataset.key = key; li.className = 'tool ' + st;
+        li.children[0].innerHTML = st === 'active' ? '<span class="spin"></span>' : toolIcon(t.label);
+      }
+      setText(li.querySelector('.tname'), t.label);
+      setText(li.querySelector('.tdetail'), t.detail != null ? t.detail : '');
+      setText(li.querySelector('.tstate'), TOOL_STATE[st]);
+    });
+    ul.hidden = !tasks.length;
+  }
+
+  function updLog(pre, log) {
+    if (!pre) return;
+    var lines = Array.isArray(log) ? log.map(String) : [];
+    pre.hidden = !lines.length;
+    var key = lines.join('\n');
+    if (pre.dataset.key === key) return;
+    pre.dataset.key = key;
+    var atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4;
+    if (pre.classList.contains('hl') && lines.length) {
+      pre.innerHTML = lines.slice(0, -1).map(function (l) { return esc(l) + '\n'; }).join('') + '<span class="last">' + esc(lines[lines.length - 1]) + '</span>';
+    } else pre.textContent = key;
+    if (atBottom) pre.scrollTop = pre.scrollHeight;
+  }
+
+  function updError(slot, err) {
+    if (!slot) return;
+    if (err == null || err === '') { if (slot.firstChild) slot.innerHTML = ''; return; }
+    if (!slot.firstChild) {
+      slot.innerHTML = '<div class="err"><span class="err-i" aria-hidden="true">!</span><span class="err-t"></span><button type="button" class="btn" data-cmd="setup-retry">Try again</button></div>';
+    }
+    setText(slot.querySelector('.err-t'), err);
+  }
+
+  /* checkboxes: the host owns the value; hold the user's click until the host echoes it */
+  var pending = {};
+  function effective(s, name) {
+    var p = pending[name], v = !!s[name];
+    if (p && (p.v === v || Date.now() - p.t > 1500)) { delete pending[name]; p = null; }
+    return p ? p.v : v;
+  }
+
+  /* ---------- render ---------- */
+  var S = null, hadState = false, builtKey = null, choice = 'kiri', main = document.getElementById('main');
+  function render() {
+    var s = Object.assign({ step: 'welcome' }, S || {});
+    if (STEPS.indexOf(s.step) < 0) s.step = 'welcome';
+    var key = JSON.stringify([s.step, s.step === 'linux' || s.step === 'engine' ? s.linux : null, s.existingUbuntu, s.otherDocker, s.sizes]);
+    if (key !== builtKey) {
+      var first = builtKey === null || !hadState, prevStep = builtKey && JSON.parse(builtKey)[0];
+      var sc = screen(s);
+      main.className = sc.cls;
+      main.innerHTML = sc.html;
+      main.scrollTop = 0;
+      builtKey = key;
+      if (!first && prevStep !== s.step) { var h = main.querySelector('h1'); if (h) h.focus({ preventScroll: true }); }
+    }
+    hadState = !!S;
+    rail(s);
+    var q = function (sel) { return main.querySelector(sel); };
+    updProgress(q('[data-slot=progress]'), s.progress);
+    updTasks(q('[data-slot=tasks]'), s.tasks);
+    updTools(q('[data-slot=tools]'), s.tasks);
+    updLog(q('[data-slot=log]'), s.log);
+    updError(q('[data-slot=error]'), s.error);
+    var r = main.querySelectorAll('input[name=linux]');
+    for (var i = 0; i < r.length; i++) r[i].checked = r[i].value === choice;
+    var cb = document.getElementById('chooseBtn');
+    if (cb) setText(cb, choice === 'ubuntu' ? 'Set up with Ubuntu' : 'Set up with Kiri Linux');
+    var mk = document.getElementById('mk'); if (mk) mk.checked = effective(s, 'makeDefault');
+    var au = document.getElementById('auto'); if (au) au.checked = effective(s, 'autostart');
+    // Kiri as docker's default builds on Kiri anyway: the question is only for docker staying elsewhere.
+    var bw = q('[data-slot=bw]'); if (bw) bw.hidden = effective(s, 'makeDefault');
+    var bk = effective(s, 'buildKiri'), rb = main.querySelectorAll('input[name=bw]');
+    for (var j = 0; j < rb.length; j++) rb[j].checked = (rb[j].value === 'kiri') === bk;
+  }
+  var queued = false;
+  function schedule() { if (!queued) { queued = true; requestAnimationFrame(function () { queued = false; render(); }); } }
+
+  /* ---------- input ---------- */
+  var copyTimer = 0;
+  main.addEventListener('click', function (ev) {
+    var a = ev.target.closest('a[data-open]');
+    if (a) { ev.preventDefault(); send('open', { name: a.href }); return; }
+    var b = ev.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.dataset.cmd) { send(b.dataset.cmd, b.dataset.value ? { value: b.dataset.value } : null); return; }
+    if (b.dataset.act === 'choose') send('setup-choose', { value: choice });
+    else if (b.dataset.act === 'copy') {
+      send('copy', { value: 'docker run --rm alpine echo hello' });
+      b.textContent = 'Copied'; clearTimeout(copyTimer);
+      copyTimer = setTimeout(function () { b.textContent = 'Copy'; }, 1600);
+    }
+  });
+  main.addEventListener('change', function (ev) {
+    var t = ev.target;
+    if (t.name === 'linux') { choice = t.value === 'ubuntu' ? 'ubuntu' : 'kiri'; render(); }
+    else if (t.name === 'bw') {
+      pending.buildKiri = { v: t.value === 'kiri', t: Date.now() };
+      send('setup-build', { value: t.value === 'kiri' ? 'kiri' : 'docker' });
+    }
+    else if (t.id === 'mk' || t.id === 'auto') {
+      var name = t.id === 'mk' ? 'makeDefault' : 'autostart';
+      pending[name] = { v: t.checked, t: Date.now() };
+      send(t.id === 'mk' ? 'setup-default' : 'setup-autostart', { value: t.checked });
+    }
+  });
+
+  /* ---------- host → page ---------- */
+  window.kiri = Object.assign(window.kiri || {}, {
+    on: function (e) {
+      if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { return; } }
+      if (!e || e.type !== 'setup') return;
+      S = e; schedule();
+    }
+  });
+
+  render();
+  send('setup-ready');
+})();
+</script>
+
+<!-- ===================================================================
+     DEV ONLY: preview harness. Active only when the URL hash starts with
+     #demo, so the real window can never show made-up progress.
+     #demo cycles through example states; #demo-<step> pins one
+     (welcome wsl restart choose choose-existing linux linux-ubuntu engine
+      tools tools-other ready error).
+     =================================================================== -->
+<script>
+(function () {
+  var hash = location.hash || '';
+  if (hash.indexOf('#demo') !== 0) return;
+  var T = function (label, state, detail) { return { label: label, state: state, detail: detail }; };
+  var base = { type: 'setup', linux: null, sizes: { wsl: 367575040, ubuntu: 418495746, kiri: 9000000 }, existingUbuntu: false, otherDocker: false, otherEngine: null,
+    makeDefault: true, buildKiri: true, autostart: true, progress: null, tasks: [], log: [], error: null };
+  var wsl = { step: 'wsl', progress: { pct: 58, done: 224395264, total: 367575040, rate: 19084083, eta: 9, label: 'Downloading WSL 3.0.3 from Microsoft' },
+    tasks: [T('Administrator approved', 'done', 'done'), T('Download WSL', 'active', '224 / 368 MB'), T('Turn on Virtual Machine Platform', 'todo', 'next'), T('Install WSL', 'todo', 'then a restart')] };
+  var X = {
+    welcome: { step: 'welcome' },
+    wsl: wsl,
+    restart: { step: 'restart' },
+    choose: { step: 'choose' },
+    'choose-existing': { step: 'choose', existingUbuntu: true },
+    linux: { step: 'linux', linux: 'kiri', progress: { pct: 66, done: null, total: null, rate: null, eta: null, label: 'Adding Kiri Linux to WSL' },
+      tasks: [T('Unpack Kiri Linux', 'done', '9 MB · done'), T('Add it to WSL', 'active', 'working'), T('Start it', 'todo', 'next')],
+      log: ['unpacked kiri-linux (Alpine 3.24.3 + Kiri 0.1.0) to %LOCALAPPDATA%\\Kiri\\wsl', 'wsl --import kiri %LOCALAPPDATA%\\Kiri\\wsl kiri-linux.tar --version 2'] },
+    'linux-ubuntu': { step: 'linux', linux: 'ubuntu', progress: { pct: 37, done: 156000000, total: 418495746, rate: 21400000, eta: 13, label: 'Downloading' },
+      tasks: [T('Download Ubuntu', 'active', '156 / 418 MB'), T('Unpack it into WSL', 'todo', '≈ 1.6 GB*'), T('Start Ubuntu', 'todo', 'next')] },
+    engine: { step: 'engine', linux: 'kiri', tasks: [T('Start the engine', 'done', 'ready in 33 ms'), T('Connect Windows to it', 'done', '\\\\.\\pipe\\kiri'), T('Run a test container', 'active', 'pulling alpine')],
+      log: ['kiri daemon: ready in 33 ms', '$ docker run --rm alpine echo hello', 'latest: Pulling from library/alpine'] },
+    tools: { step: 'tools', linux: 'kiri', tasks: [T('docker', 'done', '29.9.2 · checked'), T('Compose', 'done', 'v5.6.1 · checked'), T('buildx', 'done', 'v0.38.1 · checked'), T('docker build on Kiri', 'active', 'builder kiri-build')] },
+    'tools-other': { step: 'tools', linux: 'kiri', otherDocker: true, otherEngine: 'Docker Desktop', makeDefault: false, buildKiri: false, tasks: [T('docker', 'done', '29.9.2 · checked'), T('Compose', 'active', 'v5.6.1'), T('buildx', 'todo', 'v0.38.1'), T('docker build on Kiri', 'todo', 'builder kiri-build')] },
+    ready: { step: 'ready', linux: 'kiri' },
+    error: Object.assign({}, wsl, { progress: Object.assign({}, wsl.progress, { rate: 0, eta: null }), tasks: [wsl.tasks[0], T('Download WSL', 'error', 'stopped at 224 MB'), wsl.tasks[2], wsl.tasks[3]],
+      error: 'The download from Microsoft stopped: this PC seems to be offline. Check the connection and try again.' })
+  };
+  var cur = {};
+  var emit = function (st) { cur = Object.assign({}, base, st); window.kiri.on(JSON.parse(JSON.stringify(cur))); };
+  if (!window.webkit) {
+    window.webkit = { messageHandlers: { kiri: { postMessage: function (m) {
+      var c = JSON.parse(m); console.log('[demo host]', m);
+      if (c.cmd === 'setup-default') emit(Object.assign({}, cur, { makeDefault: c.value }));
+      if (c.cmd === 'setup-autostart') emit(Object.assign({}, cur, { autostart: c.value }));
+      if (c.cmd === 'setup-build') emit(Object.assign({}, cur, { buildKiri: c.value === 'kiri' }));
+    } } } };
+  }
+  var pin = hash.slice(6);
+  if (pin && X[pin]) { emit(X[pin]); return; }
+  var order = ['welcome', 'wsl', 'restart', 'choose', 'linux', 'linux-ubuntu', 'engine', 'tools', 'ready', 'error'], i = 0, tick = 0;
+  emit(X[order[0]]);
+  setInterval(function () {
+    tick++;
+    var name = order[i], st = X[name];
+    if (name === 'wsl' && tick % 8) {
+      var pct = Math.min(99, 20 + tick % 8 * 10);
+      emit(Object.assign({}, st, { progress: Object.assign({}, st.progress, { pct: pct, done: Math.round(367575040 * pct / 100), eta: Math.round((100 - pct) / 5) }) }));
+      return;
+    }
+    if (tick % 8 === 0) { i = (i + 1) % order.length; emit(X[order[i]]); }
+  }, 400);
+})();
+</script>
+</body>
+</html>

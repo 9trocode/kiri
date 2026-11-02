@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- What software centers (Ubuntu's App Center, GNOME Software, KDE Discover)
+     read to list Kiri as an app: without it, the launcher works but no store
+     shows Kiri. packaging/linux/build.sh fills in @VERSION@ and @DATE@. -->
+<component type="desktop-application">
+  <id>dev.kiri.Kiri</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>Kiri</name>
+  <summary>Run and share containers</summary>
+  <description>
+    <p>
+      Kiri is a tiny, fast container runtime that speaks the Docker Engine API,
+      so the docker command, Compose and buildx work with it as they are.
+    </p>
+    <ul>
+      <li>See and manage your containers, images, volumes and networks</li>
+      <li>Build images and follow the build as it runs</li>
+      <li>Share a container or a local port on the internet with one link</li>
+      <li>Run a small Kubernetes cluster</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">kiri.desktop</launchable>
+  <icon type="stock">kiri</icon>
+  <url type="homepage">https://runkiri.com/</url>
+  <developer id="dev.kiri">
+    <name>Kiri</name>
+  </developer>
+  <categories>
+    <category>Development</category>
+  </categories>
+  <keywords>
+    <keyword>docker</keyword>
+    <keyword>containers</keyword>
+    <keyword>kubernetes</keyword>
+  </keywords>
+  <provides>
+    <binary>kiri</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@">
+      <url type="details">https://runkiri.com/releases/</url>
+    </release>
+  </releases>
+</component>

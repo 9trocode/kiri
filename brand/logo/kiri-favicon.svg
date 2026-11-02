@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>Kiri</title>
+  <g transform="translate(2.6 0) skewX(-10)">
+    <clipPath id="fc"><rect x="5" y="2" width="26" height="28" rx="7"/></clipPath>
+    <rect x="5" y="2" width="26" height="28" rx="7" fill="#E0B420"/>
+    <rect x="0" y="0" width="40" height="9" fill="#F2CF5B" clip-path="url(#fc)"/>
+    <ellipse cx="18.6" cy="15" rx="2.4" ry="2.9" fill="#0F1419"/>
+    <ellipse cx="25.4" cy="15" rx="2.4" ry="2.9" fill="#0F1419"/>
+  </g>
+</svg>

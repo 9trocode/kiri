@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Kiri
+GenericName=Containers
+Comment=Run and share containers
+Exec=/usr/lib/kiri/kiri-window ui
+Icon=/usr/share/icons/hicolor/scalable/apps/kiri.svg
+Terminal=false
+Categories=Development;
+Keywords=docker;containers;kubernetes;
+StartupWMClass=kiri

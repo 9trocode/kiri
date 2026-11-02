@@ -1,0 +1,22 @@
+#!/bin/sh
+# kiri.deb: after the files are gone. Images, containers and volumes stay in
+# /var/lib/kiri and /var/lib/kiri-daemon unless the package is purged.
+set -e
+case "$1" in
+  remove)
+    [ -d /run/systemd/system ] && systemctl daemon-reload || true
+    echo "Kiri is removed; its images, containers and volumes stay in /var/lib/kiri (apt purge kiri deletes them)"
+    ;;
+  purge)
+    # Anything still mounted under the data directory (a container's rootfs
+    # or volume from an engine that was not stopped cleanly) is unmounted
+    # first, deepest first, so rm does not reach through a mount into the
+    # live filesystem it came from; --one-file-system is the second guard.
+    if command -v findmnt >/dev/null; then
+      findmnt -lrno TARGET 2>/dev/null | grep -E "^/var/lib/kiri(/|$)" | tac | xargs -r -n1 umount 2>/dev/null || true
+    fi
+    rm -rf --one-file-system /var/lib/kiri /var/lib/kiri-daemon /run/kiri
+    getent group kiri >/dev/null && groupdel kiri || true
+    ;;
+esac
+exit 0

@@ -1,0 +1,29 @@
+# Kiri on a Linux host: containers on this machine's kernel, no VM.
+# Install: cargo xtask linux, copy target/linux/release/{kiri,kiri-init} to
+# /usr/local/bin, then:  cp kiri.service /etc/systemd/system/ &&
+#   groupadd -f kiri && systemctl enable --now kiri
+# Users in the `kiri` group:  docker context create kiri --docker host=unix:///run/kiri/docker.sock
+# Membership of the `kiri` group is root-equivalent (a member can mount any
+# path into a container as root), exactly like the `docker` group.
+[Unit]
+Description=Kiri container engine
+Documentation=https://kiri.canestack.com
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/kiri daemon
+Environment=KIRI_SOCKET=/run/kiri/docker.sock
+Environment=KIRI_SOCKET_GROUP=kiri
+Environment=HOME=/var/lib/kiri-daemon
+# The daemon creates the cgroups its containers run in.
+Delegate=yes
+KillMode=mixed
+Restart=on-failure
+RuntimeDirectory=kiri
+# 0755: members of kiri reach the socket (itself 0660 root:kiri) through it.
+RuntimeDirectoryMode=0755
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

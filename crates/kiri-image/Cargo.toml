@@ -1,0 +1,17 @@
+[package]
+name = "kiri-image"
+description = "OCI image references, registry pulls and the content-addressed blob store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+tar = "0.4"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+
+[lints]
+workspace = true

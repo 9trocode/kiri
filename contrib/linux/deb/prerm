@@ -1,0 +1,8 @@
+#!/bin/sh
+# The engine stops with the package; containers and images stay in
+# /var/lib/kiri-daemon until the package is purged.
+set -e
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    systemctl disable --now kiri.service >/dev/null 2>&1 || true
+fi
+exit 0
