@@ -777,7 +777,7 @@ pub fn prefs() -> Value {
 }
 
 fn set_pref(name: &str, value: Value) {
-    if !matches!(name, "font" | "mono" | "scale" | "domainsAsked" | "theme" | "accent" | "starAsked") {
+    if !matches!(name, "font" | "mono" | "scale" | "domainsAsked" | "theme" | "accent" | "starAsked" | "updateAuto") {
         return;
     }
     let Some(path) = prefs_path() else { return };

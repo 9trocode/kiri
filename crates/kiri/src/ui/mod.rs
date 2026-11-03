@@ -438,13 +438,24 @@ pub(crate) fn prefs() -> serde_json::Value {
 }
 
 fn set_pref(name: &str, value: serde_json::Value) {
-    if !matches!(name, "font" | "mono" | "scale" | "domainsAsked" | "theme" | "accent" | "importSeen" | "updateSkip" | "updateSnoozeUntil" | "columnWidths" | "crashReports" | "ctxSnooze" | "ctxBack" | "logSize" | "starAsked" | "setupSkip") {
+    if !matches!(name, "font" | "mono" | "scale" | "domainsAsked" | "theme" | "accent" | "importSeen" | "updateAuto" | "updateSkip" | "updateSnoozeUntil" | "columnWidths" | "crashReports" | "ctxSnooze" | "ctxBack" | "logSize" | "starAsked" | "setupSkip") {
         return;
     }
     let Some(path) = prefs_path() else { return };
     let mut all = prefs();
     if !all.is_object() {
         all = serde_json::json!({});
+    }
+    // Crash reports go from when they're turned on: crashes from before that
+    // wait for the person to pick them.
+    if name == "crashReports" {
+        if value != true {
+            if let Some(o) = all.as_object_mut() {
+                o.remove("crashReportsSince");
+            }
+        } else if all[name] != true {
+            all["crashReportsSince"] = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()).into();
+        }
     }
     all[name] = value;
     let tmp = path.with_extension("json.tmp");
@@ -1274,6 +1285,21 @@ mod tests {
         let p = super::prefs();
         assert_eq!((p["font"].as_str(), p["scale"].as_f64(), p.get("script")), (Some("Georgia"), Some(1.1), None));
         assert_eq!(p["starAsked"], true);
+        // Check for updates automatically stays off across launches.
+        super::set_pref("updateAuto", false.into());
+        assert_eq!(super::prefs()["updateAuto"], false);
+        // Crash reports remember when they were turned on, and only the
+        // setting itself can say so.
+        super::set_pref("crashReportsSince", 1.into());
+        assert_eq!(super::prefs().get("crashReportsSince"), None);
+        super::set_pref("crashReports", true.into());
+        let since = super::prefs()["crashReportsSince"].as_u64().unwrap();
+        assert!(since > 1);
+        std::fs::write(dir.join("ui.json"), super::prefs().to_string().replace(&since.to_string(), "5")).unwrap();
+        super::set_pref("crashReports", true.into());
+        assert_eq!(super::prefs()["crashReportsSince"], 5, "already on: its time stays");
+        super::set_pref("crashReports", false.into());
+        assert_eq!(super::prefs().get("crashReportsSince"), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

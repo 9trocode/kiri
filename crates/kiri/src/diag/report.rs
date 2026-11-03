@@ -558,9 +558,24 @@ pub fn crash_reports_on() -> bool {
     false
 }
 
-/// Crash files waiting to go, oldest first: not sent, not being sent.
-fn pending(dir: &Path) -> Vec<String> {
-    let mut names: Vec<String> = crash_files(dir).into_iter().filter(|n| !n.ends_with(".sent.txt") && !n.ends_with(".sending")).collect();
+/// When crash reports were turned on, in Unix seconds. 0 for a setting from
+/// before this was kept: those people's waiting crashes still go.
+#[cfg(any(target_os = "macos", all(target_os = "linux", feature = "window")))]
+fn crash_reports_since() -> u64 {
+    crate::ui::prefs()["crashReportsSince"].as_u64().unwrap_or(0)
+}
+
+#[cfg(not(any(target_os = "macos", all(target_os = "linux", feature = "window"))))]
+fn crash_reports_since() -> u64 {
+    0
+}
+
+/// Crash files waiting to go, oldest first: not sent, not being sent, and not
+/// from before `since`. Turning reports on doesn't send what came earlier,
+/// which includes crashes the person answered "Not now" to.
+fn pending(dir: &Path, since: u64) -> Vec<String> {
+    let waiting = |n: &String| !n.ends_with(".sent.txt") && !n.ends_with(".sending") && crash_name(n).is_some_and(|(t, _)| t >= since);
+    let mut names: Vec<String> = crash_files(dir).into_iter().filter(waiting).collect();
     names.reverse();
     names
 }
@@ -579,7 +594,7 @@ pub fn send_crashes() {
         }
     }
     let redactor = Redactor::for_user();
-    for name in pending(&dir) {
+    for name in pending(&dir, crash_reports_since()) {
         // Another process (the window and the engine both try) has it.
         let Some(claimed) = claim(&dir, &name) else { continue };
         if let Err(e) = send_claimed(&dir, &name, &claimed, &redactor) {
@@ -893,7 +908,11 @@ mod tests {
         for n in ["1792800000-daemon.txt", "1792700000-ui.txt", "1792600000-cli.sent.txt", "1792500000-ui.txt.sending", ".window-opened"] {
             std::fs::write(home.join(n), "x").unwrap();
         }
-        assert_eq!(pending(&home), ["1792700000-ui.txt", "1792800000-daemon.txt"]);
+        assert_eq!(pending(&home, 0), ["1792700000-ui.txt", "1792800000-daemon.txt"]);
+        // Crashes from before they were turned on stay here.
+        assert_eq!(pending(&home, 1_792_700_001), ["1792800000-daemon.txt"]);
+        assert_eq!(pending(&home, 1_792_800_000), ["1792800000-daemon.txt"]);
+        assert!(pending(&home, 1_792_800_001).is_empty());
         let _ = std::fs::remove_dir_all(&home);
     }
 }
