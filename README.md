@@ -22,6 +22,10 @@
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-555"></a>
 </p>
 
+<p align="center">
+  <img src="docs/images/kiri-window.png" alt="The Kiri window, showing containers grouped by Compose project with their state, ports, local domains and size" width="900">
+</p>
+
 ---
 
 Kiri is a lightweight replacement for Docker Desktop and OrbStack, written in
