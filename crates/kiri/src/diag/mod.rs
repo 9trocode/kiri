@@ -483,6 +483,13 @@ fn install_panic_hook() {
             .or_else(|| info.payload().downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "(no message)".into());
         let at = info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())).unwrap_or_default();
+        // A command whose output was closed under it (`kiri share | head`,
+        // a closed terminal, the reader gone): not a crash. End quietly, as
+        // a command killed by SIGPIPE would, with no crash file.
+        if part() == Part::Cli && closed_output(&message) {
+            write(Level::Info, "output closed", &[("message", message)]);
+            std::process::exit(if cfg!(unix) { 141 } else { 1 });
+        }
         let thread = std::thread::current().name().unwrap_or("unnamed").to_owned();
         write(Level::Error, "panic", &[("thread", thread.clone()), ("at", at.clone()), ("message", message.clone())]);
         let backtrace = std::backtrace::Backtrace::force_capture();
@@ -492,6 +499,14 @@ fn install_panic_hook() {
         }
         prev(info);
     }));
+}
+
+/// Whether a panic is Rust's `print!`/`eprint!` failing because the other
+/// end of stdout or stderr went away: a broken pipe (EPIPE, os error 32 on
+/// Unix; 109 on Windows) or Windows' "the pipe is being closed" (232).
+fn closed_output(message: &str) -> bool {
+    (message.starts_with("failed printing to stdout") || message.starts_with("failed printing to stderr"))
+        && ["Broken pipe", "(os error 32)", "(os error 109)", "(os error 232)"].iter().any(|m| message.contains(m))
 }
 
 /// What a crash file holds.
@@ -544,6 +559,15 @@ pub fn save_crash(dir: &Path, t: SystemTime, part: Part, text: &str) -> io::Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn closed_output_is_not_a_crash() {
+        assert!(closed_output("failed printing to stderr: Broken pipe (os error 32)"));
+        assert!(closed_output("failed printing to stdout: The pipe is being closed. (os error 232)"));
+        assert!(closed_output("failed printing to stdout: The pipe has been ended. (os error 109)"));
+        assert!(!closed_output("failed printing to stdout: No space left on device (os error 28)"));
+        assert!(!closed_output("called `Result::unwrap()` on an `Err` value: Broken pipe (os error 32)"));
+    }
 
     fn temp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("kiri-diag-{name}-{}", std::process::id()));
