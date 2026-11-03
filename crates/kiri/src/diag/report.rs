@@ -17,8 +17,10 @@
 //!  "created_at":"<RFC 3339>","text":"<the redacted report or crash>"}
 //! ```
 //!
-//! with `Authorization: Bearer <token>` when signed in to Kiri Cloud. It
-//! answers `201 {"id":"rep_…"}`, the id a person can quote to us. Crash
+//! A report the person sends carries `Authorization: Bearer <token>` when
+//! signed in to Kiri Cloud, so it can be answered. A crash never does: it
+//! goes without the person's account. Crash uploads also leave out the image
+//! and container names their log lines name. It answers `201 {"id":"rep_…"}`, the id a person can quote to us. Crash
 //! files that went become `<name>.sent.txt`; any other answer leaves them
 //! for the next try.
 
@@ -532,7 +534,8 @@ pub fn body(kind: &str, part: Part, created: SystemTime, text: &str, install_id:
 pub fn send(kind: &str, part: Part, created: SystemTime, text: &str) -> io::Result<String> {
     let state = super::state_dir().ok_or_else(|| io::Error::other("HOME is not set"))?;
     let body = body(kind, part, created, text, &install_id(&state));
-    let (status, v) = crate::share::post_report(&body)?;
+    // Only a report the person sends carries their sign-in; a crash never does.
+    let (status, v) = crate::share::post_report(&body, kind == "report")?;
     let why = v["error"].as_str().map(|e| format!(": {e}")).unwrap_or_default();
     match status {
         200 | 201 => v["id"]
@@ -637,22 +640,57 @@ fn send_claimed(dir: &Path, name: &str, claimed: &Path, redactor: &Redactor) -> 
     }
 }
 
+/// Log fields that name the person's images and containers.
+const NAME_FIELDS: [&str; 5] = ["image", "name", "container", "reference", "repo"];
+
 /// What a crash upload holds: the crash file, then the last lines its part
-/// logged up to the crash.
+/// logged up to the crash, without the image and container names they
+/// carry, wherever those appear.
 fn crash_upload(state: &Path, secs: u64, part: Part, text: &str) -> String {
     let until = time::rfc3339(UNIX_EPOCH + Duration::from_secs(secs + 1));
-    let lines: Vec<String> = read_lines(state, &[part], Filter::default(), 2000)
-        .iter()
+    let mut lines: Vec<Value> = read_lines(state, &[part], Filter::default(), 2000)
+        .into_iter()
         .filter(|v| v["time"].as_str().is_some_and(|t| t < until.as_str()))
-        .map(|v| render(v, true, false))
         .collect();
-    let lines = &lines[lines.len().saturating_sub(CRASH_LOG_LINES)..];
+    lines.drain(..lines.len().saturating_sub(CRASH_LOG_LINES));
     let mut s = text.trim_end().to_owned();
     let _ = writeln!(s, "\n\n==== The last {} log lines before it ====", lines.len());
-    for l in lines {
-        let _ = writeln!(s, "{l}");
+    for l in &lines {
+        let _ = writeln!(s, "{}", render(l, true, false));
     }
-    s
+    without_names(&s, &lines)
+}
+
+/// `text` with every image and container name that `lines` log taken out,
+/// longest first, so `web` doesn't leave half of `web-admin`.
+fn without_names(text: &str, lines: &[Value]) -> String {
+    let mut names: Vec<&str> = lines
+        .iter()
+        .flat_map(|v| NAME_FIELDS.iter().filter_map(move |k| v["fields"][*k].as_str()))
+        .map(str::trim)
+        .filter(|n| n.len() >= 3 && *n != "[redacted]")
+        .collect();
+    names.sort_by_key(|n| std::cmp::Reverse(n.len()));
+    names.dedup();
+    names.into_iter().fold(text.to_owned(), |s, n| replace_whole(&s, n, "[name]"))
+}
+
+/// Every `name` in `s` that stands alone (not inside a longer word, so a
+/// container `web` leaves `webpki` be, but not `web.kiri.local`).
+fn replace_whole(s: &str, name: &str, with: &str) -> String {
+    let joins = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-');
+    let (mut out, mut last, mut from) = (String::with_capacity(s.len()), 0, 0);
+    while let Some(i) = s[from..].find(name).map(|i| i + from) {
+        let end = i + name.len();
+        if !joins(s[..i].chars().next_back()) && !joins(s[end..].chars().next()) {
+            out.push_str(&s[last..i]);
+            out.push_str(with);
+            last = end;
+        }
+        from = end;
+    }
+    out.push_str(&s[last..]);
+    out
 }
 
 /// The id a sent crash file ends with.
@@ -792,6 +830,19 @@ mod tests {
         assert_eq!(msgs(read_lines(&state, &[Part::Ui], Filter::default(), 50)), "b");
         assert_eq!(msgs(read_lines(&state, &Part::ALL, Filter { errors: false, op: Some("run-7c2e") }, 50)), "a,b");
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn crash_uploads_leave_out_image_and_container_names() {
+        let line = |msg: &str, fields: &[(&str, String)]| -> Value { serde_json::from_str(&super::super::json_line("2026-10-28T09:41:07.123Z", Level::Info, Part::Daemon, msg, fields)).unwrap() };
+        let lines = [
+            line("image pull failed", &[("image", "registry.acme.corp/secret-app:1.2".into()), ("error", "registry.acme.corp/secret-app:1.2: unauthorized".into())]),
+            line("container exited", &[("name", "web".into()), ("image", "nginx".into())]),
+        ];
+        let text = format!("panic at webpki: web.kiri.local is gone\n{}\n{}", render(&lines[0], true, false), render(&lines[1], true, false));
+        let out = without_names(&text, &lines);
+        assert!(!out.contains("secret-app") && !out.contains("acme") && !out.contains("nginx"), "{out}");
+        assert!(out.contains("webpki") && out.contains("[name].kiri.local") && out.contains("name=[name]"), "{out}");
     }
 
     #[test]

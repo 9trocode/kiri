@@ -429,12 +429,14 @@ fn api_error(v: &Value, status: u16) -> io::Error {
 }
 
 /// Kiri Cloud's diagnostics intake, `POST /v1/reports` on the same edge
-/// (`KIRI_SHARE_SERVER` and the config's `server` move it, as for sharing),
-/// signed in when there is a token, anonymous when not. See `crate::diag::report`
-/// (and crates/kiri-win/src/diag.rs on Windows).
-pub fn post_report(body: &Value) -> io::Result<(u16, Value)> {
+/// (`KIRI_SHARE_SERVER` and the config's `server` move it, as for sharing).
+/// `signed` sends the Kiri Cloud token when there is one, so a report the
+/// person sent can be answered; crashes always go without it, so they never
+/// name the person's GitHub account. See `crate::diag::report` (and
+/// crates/kiri-win/src/diag.rs on Windows).
+pub fn post_report(body: &Value, signed: bool) -> io::Result<(u16, Value)> {
     let cfg = read_config();
-    api(&server(&cfg), "POST", "/v1/reports", Some(body), cfg.token.as_deref())
+    api(&server(&cfg), "POST", "/v1/reports", Some(body), cfg.token.as_deref().filter(|_| signed))
 }
 
 // ---------------------------------------------------------------- account

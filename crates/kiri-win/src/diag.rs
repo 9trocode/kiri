@@ -257,7 +257,8 @@ fn send_report(text: &str) -> io::Result<String> {
         }
         text = format!("{MARK}{}", &text[cut..]);
     };
-    let (status, v) = crate::share::post_report(&body)?;
+    // A report the person sends: signed in, so it can be answered.
+    let (status, v) = crate::share::post_report(&body, true)?;
     let why = v["error"].as_str().map(|e| format!(": {e}")).unwrap_or_default();
     match status {
         200 | 201 => v["id"]

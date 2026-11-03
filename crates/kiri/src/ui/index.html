@@ -5474,7 +5474,7 @@ function diagPane() {
   const crashes = dg.crashes == null ? `<div class="none">Looking for crash reports…</div>` : dg.crashes.length ? dg.crashes.map(crash).join("") : `<div class="none">No crashes. Kiri keeps a report here if one of its parts ever stops unexpectedly.</div>`;
   return `<div class="pane diag"><h3>Diagnostics</h3>
     <div class="pref"><span class="t">Send crash reports automatically</span>
-      <span class="d">When part of Kiri crashes, the stack trace, versions and the last 200 log lines before it go to Kiri Cloud. Nothing from inside your containers; your home folder, tokens and passwords are blanked.</span>
+      <span class="d">When part of Kiri crashes, the stack trace and the last 200 log lines before it go to Kiri Cloud, with Kiri's and the system's versions, the computer's model and a random ID for this install. Never your Kiri Cloud account, and nothing from inside your containers. Your home folder, image and container names, tokens and passwords are taken out.</span>
       <div class="seg" role="group" aria-label="Send crash reports automatically"><button data-dgauto="0" aria-pressed="${prefs.crashReports !== true}">Off</button><button data-dgauto="1" aria-pressed="${prefs.crashReports === true}">On</button></div></div>
     <div class="pref"><span class="t">Diagnostics report</span>
       <span class="d">Recent logs, crash reports and versions in one redacted file, for when something goes wrong.</span>
@@ -5557,7 +5557,7 @@ function drawReport() {
   const item = (t, d) => `<div class="rp-item">${dgIcon("check")}<span class="t">${t}</span><span class="d">${d}</span></div>`;
   scrim.innerHTML = `<div class="dialog rp-dialog" role="dialog" aria-modal="true" aria-labelledby="rp-t">
     <h3 id="rp-t">${send_ ? "Send a report to Kiri" : "Create a diagnostics report"}</h3>
-    <p>${send_ ? "We get the file below, redacted, and you get an ID to quote when you write to us." : "One text file, redacted, saved to your Desktop and shown in Finder. Read it before you share it."}</p>
+    <p>${send_ ? "We get the file below, redacted, and you get an ID to quote when you write to us. If you're signed in to Kiri Cloud, it says it's from you, so we can reply." : "One text file, redacted, saved to your Desktop and shown in Finder. Read it before you share it."}</p>
     <div class="rp-list">${item("Kiri's logs", "The last 300 lines from the window, the engine and kiri commands, and the engine's own output")}
       ${item("Crash reports", "The 5 newest, and macOS's own crash reports for Kiri from the last 30 days")}
       ${item("Kiri and this Mac", "Versions, macOS, whether the engine runs, how many containers and images")}
