@@ -1,6 +1,9 @@
 //! The guest's layer store: compressed layer blobs arrive from the host over
 //! vsock and are unpacked once into `layers/<hex>/`, ready to be stacked by
-//! overlayfs. A layer directory only appears, by rename, once it is complete.
+//! overlayfs. A layer directory only appears, by rename, once it is complete,
+//! and is only used once `<hex>.done` beside it says its files are on disk:
+//! a VM that stops before the guest flushes can keep a layer's names but
+//! lose its contents, leaving every file empty.
 
 use std::fs;
 use std::io::{self, BufReader, Read};
@@ -24,8 +27,12 @@ pub fn dir(root: &Path, digest: &str) -> io::Result<PathBuf> {
     Ok(root.join(hex(digest)?))
 }
 
+fn marker(root: &Path, digest: &str) -> io::Result<PathBuf> {
+    Ok(root.join(format!("{}.done", hex(digest)?)))
+}
+
 pub fn present(root: &Path, digest: &str) -> bool {
-    dir(root, digest).is_ok_and(|d| d.is_dir())
+    dir(root, digest).is_ok_and(|d| d.is_dir()) && marker(root, digest).is_ok_and(|m| m.is_file())
 }
 
 /// Reads exactly `begin.size` bytes of blob from `stream` and unpacks them.
@@ -42,18 +49,65 @@ pub fn receive(stream: &mut impl Read, begin: &LayerBegin<'_>, root: &Path) -> i
     // Whatever happened, consume the rest of the blob so the next frame lines up.
     io::copy(&mut limited, &mut io::sink())?;
 
-    match result {
-        Ok(unpacked_bytes) => {
-            if final_dir.exists() {
-                let _ = fs::remove_dir_all(&tmp);
-            } else {
-                fs::rename(&tmp, &final_dir)?;
-            }
-            Ok(LayerStored { unpacked_bytes, elapsed_ns: started.elapsed().as_nanos() as u64 })
-        }
+    match result.and_then(|unpacked_bytes| install(root, begin.digest, &tmp, &final_dir).map(|()| unpacked_bytes)) {
+        Ok(unpacked_bytes) => Ok(LayerStored { unpacked_bytes, elapsed_ns: started.elapsed().as_nanos() as u64 }),
         Err(e) => {
             let _ = fs::remove_dir_all(&tmp);
             Err(e)
+        }
+    }
+}
+
+/// Puts an unpacked layer in place: its files reach the disk first, then
+/// the directory is renamed in, then the marker says it is whole.
+fn install(root: &Path, digest: &str, tmp: &Path, final_dir: &Path) -> io::Result<()> {
+    if present(root, digest) {
+        let _ = fs::remove_dir_all(tmp);
+        return Ok(());
+    }
+    sync_fs(tmp)?;
+    if final_dir.exists() {
+        // A copy without a marker was cut short and may hold empty files.
+        // Moved aside rather than deleted here, which can take a while;
+        // the next RetainLayers clears it.
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        fs::rename(final_dir, root.join(format!(".stale-{}-{nanos}", hex(digest)?)))?;
+    }
+    fs::rename(tmp, final_dir)?;
+    fs::File::create(marker(root, digest)?)?.sync_all()?;
+    fs::File::open(root)?.sync_all()
+}
+
+/// Flushes the filesystem holding `path` to disk.
+fn sync_fs(path: &Path) -> io::Result<()> {
+    let f = fs::File::open(path)?;
+    // SAFETY: a valid descriptor that outlives the call.
+    sys::check(unsafe { libc::syncfs(std::os::fd::AsRawFd::as_raw_fd(&f)) } as _, "syncfs")?;
+    Ok(())
+}
+
+/// Deletes every layer not in `keep` (blob digests), every layer without
+/// its marker, and whatever an unpack left half-done. Anything that isn't
+/// one of those names is left alone.
+pub fn retain<'a>(root: &Path, keep: impl Iterator<Item = &'a str>) {
+    let keep: std::collections::HashSet<&str> = keep.filter_map(|d| hex(d).ok()).collect();
+    let Ok(entries) = fs::read_dir(root) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let leftover = name.starts_with(".tmp-") || name.starts_with(".stale-");
+        let (h, is_marker) = match name.strip_suffix(".done") {
+            Some(h) => (h, true),
+            None => (name, false),
+        };
+        let layer = h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit());
+        if !leftover && !layer {
+            continue;
+        }
+        let whole = layer && root.join(h).is_dir() && root.join(format!("{h}.done")).is_file();
+        if leftover || !keep.contains(h) || !whole {
+            let path = entry.path();
+            let _ = if is_marker || !path.is_dir() { fs::remove_file(&path) } else { fs::remove_dir_all(&path) };
         }
     }
 }
@@ -312,6 +366,65 @@ mod tests {
         untar(Capped { inner: &bytes[..], left: u64::MAX }, &dest).unwrap();
         assert!(fs::symlink_metadata(dest.join("usr/share/doc")).unwrap().file_type().is_char_device());
         let _ = fs::remove_dir_all(&dest);
+    }
+
+    fn layer_blob(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut b = tar::Builder::new(Vec::new());
+        for (name, data) in files {
+            b.append_data(&mut header(data.len() as u64, 0o644), name, *data).unwrap();
+        }
+        b.into_inner().unwrap()
+    }
+
+    const D1: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    const D2: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
+
+    fn send(root: &Path, digest: &str, blob: &[u8]) -> LayerStored {
+        let begin = LayerBegin { digest, media_type: "application/vnd.oci.image.layer.v1.tar", size: blob.len() as u64 };
+        receive(&mut &blob[..], &begin, root).unwrap()
+    }
+
+    /// A stored layer is present only with its marker; one cut short
+    /// (directory, no marker) is not, and is replaced when sent again.
+    #[test]
+    fn layer_without_marker_is_replaced() {
+        let root = scratch("marker");
+        let blob = layer_blob(&[("bin/sh", b"real")]);
+        send(&root, D1, &blob);
+        assert!(present(&root, D1));
+        assert_eq!(fs::read(dir(&root, D1).unwrap().join("bin/sh")).unwrap(), b"real");
+
+        // What a VM stopped before the flush leaves: names, empty contents.
+        fs::remove_file(marker(&root, D1).unwrap()).unwrap();
+        fs::write(dir(&root, D1).unwrap().join("bin/sh"), b"").unwrap();
+        assert!(!present(&root, D1));
+        send(&root, D1, &blob);
+        assert!(present(&root, D1));
+        assert_eq!(fs::read(dir(&root, D1).unwrap().join("bin/sh")).unwrap(), b"real");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// Retain keeps whole layers it is told to and deletes the rest:
+    /// unlisted layers, unmarked ones, leftovers. Other names stay.
+    #[test]
+    fn retain_deletes_unused_and_broken_layers() {
+        let root = scratch("retain");
+        let blob = layer_blob(&[("f", b"x")]);
+        send(&root, D1, &blob);
+        send(&root, D2, &blob);
+        let broken = "3".repeat(64);
+        fs::create_dir(root.join(&broken)).unwrap();
+        fs::create_dir(root.join(format!(".stale-{broken}-1"))).unwrap();
+        fs::create_dir(root.join(format!(".tmp-{broken}"))).unwrap();
+        fs::write(root.join("other"), "keep").unwrap();
+
+        retain(&root, [D1, &format!("sha256:{broken}")].into_iter());
+        assert!(present(&root, D1));
+        assert!(!dir(&root, D2).unwrap().exists() && !marker(&root, D2).unwrap().exists());
+        assert!(!root.join(&broken).exists(), "unmarked layer kept");
+        assert!(!root.join(format!(".stale-{broken}-1")).exists() && !root.join(format!(".tmp-{broken}")).exists());
+        assert!(root.join("other").is_file());
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// A layer that expands past its cap is refused.

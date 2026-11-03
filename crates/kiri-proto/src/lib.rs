@@ -94,6 +94,10 @@ pub enum Msg<'a> {
     /// Host → guest: delete every stopped container's files except these.
     /// Sent once after connecting. No reply.
     Retain(StrList<'a>),
+    /// Host → guest: delete every unpacked layer except these (by blob
+    /// digest), and any left half-written. Sent once after connecting,
+    /// before anything runs. No reply.
+    RetainLayers(StrList<'a>),
     /// Host → guest: metadata of a path inside a running container's root
     /// (symlinks are not followed). Answered by `FsStat` or `Error`.
     FsStatRequest { id: &'a str, path: &'a str },
@@ -635,6 +639,7 @@ mod kind {
     pub const UPLINK_QUERY: u16 = 70;
     pub const UPLINK: u16 = 71;
     pub const REMOVE_BRIDGE: u16 = 72;
+    pub const RETAIN_LAYERS: u16 = 73;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -716,6 +721,11 @@ pub fn encode_listening<S: AsRef<str>>(out: &mut Vec<u8>, lines: &[S]) {
 /// Encodes a `Retain` frame from the sender's ids.
 pub fn encode_retain<S: AsRef<str>>(out: &mut Vec<u8>, ids: &[S]) {
     frame(out, kind::RETAIN, |out| StrList::put(out, ids));
+}
+
+/// Encodes a `RetainLayers` frame from the sender's layer digests.
+pub fn encode_retain_layers<S: AsRef<str>>(out: &mut Vec<u8>, digests: &[S]) {
+    frame(out, kind::RETAIN_LAYERS, |out| StrList::put(out, digests));
 }
 
 /// A container's network, from the sender's side.
@@ -880,6 +890,10 @@ impl Msg<'_> {
                 o.extend_from_slice(e.opts.raw);
             }),
             Msg::Retain(ids) => frame(out, kind::RETAIN, |o| {
+                put_u32(o, ids.count);
+                o.extend_from_slice(ids.raw);
+            }),
+            Msg::RetainLayers(ids) => frame(out, kind::RETAIN_LAYERS, |o| {
                 put_u32(o, ids.count);
                 o.extend_from_slice(ids.raw);
             }),
@@ -1162,6 +1176,7 @@ pub fn decode(frame: &[u8]) -> Result<Msg<'_>, DecodeError> {
             opts: if r.remaining() >= 4 { r.list()? } else { StrList { count: 0, raw: &[] } },
         }),
         kind::RETAIN => Msg::Retain(r.list()?),
+        kind::RETAIN_LAYERS => Msg::RetainLayers(r.list()?),
         kind::FS_STAT_REQUEST => Msg::FsStatRequest { id: r.str()?, path: r.str()? },
         kind::FS_STAT => Msg::FsStat(read_entry(&mut r)?),
         kind::FS_LIST_REQUEST => Msg::FsListRequest { id: r.str()?, path: r.str()? },
@@ -1319,6 +1334,14 @@ mod tests {
         encode_retain(&mut buf, &["a", "b"]);
         let Msg::Retain(ids) = decode(&buf).unwrap() else { panic!() };
         assert_eq!(ids.iter().collect::<Vec<_>>(), ["a", "b"]);
+
+        buf.clear();
+        encode_retain_layers(&mut buf, &["sha256:aa"]);
+        let Msg::RetainLayers(ids) = decode(&buf).unwrap() else { panic!() };
+        assert_eq!(ids.iter().collect::<Vec<_>>(), ["sha256:aa"]);
+        let mut again = Vec::new();
+        Msg::RetainLayers(ids).encode(&mut again);
+        assert_eq!(buf, again);
     }
 
     #[test]

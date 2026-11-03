@@ -459,6 +459,10 @@ pub fn serve(mut conn: File, paths: &Paths) -> io::Result<()> {
                     container::retain(paths, keep, &running);
                     continue;
                 }
+                Ok(Msg::RetainLayers(keep)) => {
+                    layers::retain(&paths.layers, keep.iter());
+                    continue;
+                }
                 Ok(Msg::SetTime(ns)) => {
                     let ts = libc::timespec { tv_sec: (ns / 1_000_000_000) as _, tv_nsec: (ns % 1_000_000_000) as _ };
                     // A host process shares the host's clock; only the VM needs telling.

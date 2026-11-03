@@ -426,6 +426,11 @@ impl VmLink {
         self.send(|o| kiri_proto::encode_retain(o, ids))
     }
 
+    /// Tells the guest which unpacked layers are still used; it deletes the rest.
+    pub fn retain_layers(&self, digests: &[String]) -> io::Result<()> {
+        self.send(|o| kiri_proto::encode_retain_layers(o, digests))
+    }
+
     pub fn kill(&self, id: &str, signal: u32) -> io::Result<()> {
         self.send(|o| Msg::Kill { id, signal }.encode(o))
     }
@@ -482,12 +487,15 @@ impl VmLink {
         let _ = self.send(|o| Msg::Shutdown.encode(o));
     }
 
-    /// Linux host: waits for the agent process to exit after `shutdown`
-    /// (it kills what is left and removes its bridges and nftables table
-    /// first), and kills it if it has not within `timeout`. The daemon
-    /// must not exit before it: an agent left behind kept its containers,
-    /// ports and sockets, and the next daemon could not start.
-    #[cfg(target_os = "linux")]
+    /// Waits for the guest to stop after `shutdown`, and forces it if it has
+    /// not within `timeout`. False if it had to be forced.
+    ///
+    /// In a VM the guest flushes its disk before powering off; stopping the
+    /// VM before then (as dropping it does) loses what was still cached, and
+    /// files written shortly before come back empty. On a Linux host the
+    /// agent kills what is left and removes its bridges and nftables table
+    /// first; an agent left behind kept its containers, ports and sockets,
+    /// and the next daemon could not start.
     pub fn wait_stopped(&self, timeout: std::time::Duration) -> bool {
         let deadline = std::time::Instant::now() + timeout;
         let vm = self._vm.lock().unwrap_or_else(|e| e.into_inner());

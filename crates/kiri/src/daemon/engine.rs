@@ -671,6 +671,16 @@ impl Engine {
         // Everything else on the guest's disk belongs to containers that are gone.
         let keep: Vec<String> = self.lock().containers.keys().cloned().collect();
         vm.retain(&keep)?;
+        // And every unpacked layer no image or container uses. Skipped if
+        // the image list can't be read, rather than deleting everything.
+        match self.store.images() {
+            Ok(images) => {
+                let mut layers: std::collections::BTreeSet<String> = images.iter().flat_map(|i| i.layers.iter().map(|l| l.digest.clone())).collect();
+                layers.extend(self.lock().containers.values().flat_map(|c| c.layers.iter().cloned()));
+                vm.retain_layers(&layers.into_iter().collect::<Vec<_>>())?;
+            }
+            Err(e) => crate::diag::warn!("kept every unpacked layer: images unreadable", error = e),
+        }
         *self.memory_target.lock().unwrap_or_else(|e| e.into_inner()) = ceiling;
         self.sleeping.store(false, std::sync::atomic::Ordering::SeqCst);
         *link = Some(vm.clone());
@@ -884,6 +894,10 @@ impl Engine {
         self.memory_used.store(0, std::sync::atomic::Ordering::Relaxed);
         self.memory_stall.store(0, std::sync::atomic::Ordering::Relaxed);
         vm.shutdown();
+        // Let the guest flush its disk and power off before the VM is dropped.
+        if !vm.wait_stopped(Duration::from_secs(10)) {
+            crate::diag::warn!("the VM did not power off in 10 s; stopped it");
+        }
         // Dropping the last reference stops the VM and frees the data disk
         // before anyone may boot a new one (they wait on `link`).
         drop(vm);
@@ -2829,9 +2843,8 @@ impl Engine {
         }
         if let Some(vm) = self.awake() {
             vm.shutdown();
-            #[cfg(target_os = "linux")]
             if !vm.wait_stopped(Duration::from_secs(10)) {
-                crate::diag::warn!("the agent did not stop in 10 s; killed it");
+                crate::diag::warn!("the VM did not power off in 10 s; stopped it");
             }
         }
     }
