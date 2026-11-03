@@ -92,12 +92,15 @@ fn curl() -> Command {
     std::os::windows::process::CommandExt::creation_flags(&mut c, CREATE_NO_WINDOW);
     c.stdin(Stdio::null());
     c.arg("-A").arg(format!("kiri-win/{CURRENT}"));
+    // Redirects stay on HTTPS too: by default curl follows one down to HTTP.
+    c.args(["--proto", if cfg!(debug_assertions) { "=https,file" } else { "=https" }, "--proto-redir", "=https"]);
     c
 }
 
-/// Only HTTPS carries a release; `file:` is for trying a feed on disk.
+/// Only HTTPS carries a release; in a debug build, `file:` is for trying a
+/// feed on disk.
 fn allowed_url(url: &str) -> io::Result<()> {
-    if url.starts_with("https://") || url.starts_with("file:///") {
+    if url.starts_with("https://") || (cfg!(debug_assertions) && url.starts_with("file:///")) {
         Ok(())
     } else {
         Err(io::Error::other(format!("the update feed points at {url}, which is not https")))
@@ -603,7 +606,7 @@ mod tests {
     #[test]
     fn only_https_feeds() {
         assert!(super::allowed_url("https://download.runkiri.com/latest-windows-x86_64.json").is_ok());
-        assert!(super::allowed_url("file:///C:/t/latest.json").is_ok());
+        assert_eq!(super::allowed_url("file:///C:/t/latest.json").is_ok(), cfg!(debug_assertions));
         assert!(super::allowed_url("http://download.runkiri.com/latest-windows-x86_64.json").is_err());
         assert!(super::allowed_url("ftp://x/y").is_err());
     }
