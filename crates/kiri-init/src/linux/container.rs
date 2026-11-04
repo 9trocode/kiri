@@ -257,7 +257,7 @@ pub fn spawn(spec: &RunSpec<'_>, paths: &Paths, net: NetCtx<'_>) -> io::Result<P
     prepared.host = HostApplied { rlimits: host.rlimits.clone(), groups: host.groups.clone(), nodes };
     // Small, short-lived files: kept in memory (/run is tmpfs), not on the data disk.
     let etc_dir = PathBuf::from("/run/kiri").join(spec.id);
-    let embedded_dns = embedded_dns(spec, net.upstream_dns);
+    let embedded_dns = embedded_dns(spec, net.upstream_dns, net.dns.relay);
     prepared.etc_files = write_etc_files(spec, &etc_dir, net.upstream_dns, embedded_dns).map_err(cleanup)?;
     prepared.mounts = parse_mounts(spec.mounts).map_err(cleanup)?;
     let bridged = !spec.net.bridge.is_empty() && spec.flags & (run_flags::NET_HOST | run_flags::NET_NONE) == 0 && prepared.net_join.is_none();
@@ -736,16 +736,18 @@ fn write_etc_files(spec: &RunSpec<'_>, base: &std::path::Path, upstream: &[[u8; 
 /// `--dns-search` and `--dns-option` apply either way.
 /// Whether the container's DNS goes to the agent's resolver (127.0.0.11):
 /// on a user network, as Docker's embedded DNS; and on the default bridge
-/// when the host's resolver is one of its own addresses (net::local_resolver),
-/// unless the container names its own servers (`--dns`).
-fn embedded_dns(spec: &RunSpec<'_>, upstream: &[[u8; 4]]) -> bool {
+/// when the host's resolver is one of its own addresses (net::local_resolver)
+/// or, in the VM (`relay`), so that lookups the Mac's gateway resolver fails
+/// can go through the host (dns.rs), unless the container names its own
+/// servers (`--dns`).
+fn embedded_dns(spec: &RunSpec<'_>, upstream: &[[u8; 4]], relay: bool) -> bool {
     if spec.flags & run_flags::DNS_GATEWAY != 0 {
         return true;
     }
     let bridged = !spec.net.bridge.is_empty()
         && spec.flags & (run_flags::NET_HOST | run_flags::NET_NONE) == 0
         && net_opts::values(spec.net.opts, net_opts::NETNS).next().is_none();
-    bridged && net_opts::values(spec.net.opts, net_opts::NAMESERVER).next().is_none() && net::local_resolver(upstream)
+    bridged && net_opts::values(spec.net.opts, net_opts::NAMESERVER).next().is_none() && (relay || net::local_resolver(upstream))
 }
 
 fn resolv_conf(spec: &RunSpec<'_>, upstream: &[[u8; 4]], embedded_dns: bool) -> String {
@@ -1380,8 +1382,23 @@ mod tests {
         encode_run(&mut buf, "c1", &[], &["sh"], &[], "/", "", "c1", 0, net, &[], &Limits::default(), 0, &[] as &[&str]);
         let Ok(Msg::Run(spec)) = decode(&buf) else { panic!() };
         // TEST-NET-3: no machine running the tests has it.
-        assert!(!super::embedded_dns(&spec, &[[203, 0, 113, 53]]), "a resolver elsewhere is asked directly");
-        assert!(!super::embedded_dns(&spec, &[]), "no resolver: the public fallback, not the agent");
+        assert!(!super::embedded_dns(&spec, &[[203, 0, 113, 53]], false), "a resolver elsewhere is asked directly");
+        assert!(!super::embedded_dns(&spec, &[], false), "no resolver: the public fallback, not the agent");
+    }
+
+    #[test]
+    fn in_the_vm_the_default_bridge_goes_through_the_agent() {
+        let spec_with = |flags: u32, opts: &[&str], f: &dyn Fn(&kiri_proto::RunSpec<'_>)| {
+            let mut buf = Vec::new();
+            let net = Net { bridge: "kiri0", ip: [172, 17, 0, 2], prefix: 16, gateway: [172, 17, 0, 1], extra_hosts: &[], dns_names: &[], opts };
+            encode_run(&mut buf, "c1", &[], &["sh"], &[], "/", "", "c1", flags, net, &[], &Limits::default(), 0, &[] as &[&str]);
+            let Ok(Msg::Run(spec)) = decode(&buf) else { panic!() };
+            f(&spec);
+        };
+        let gateway = [[192, 168, 64, 1]];
+        spec_with(0, &[], &|s| assert!(super::embedded_dns(s, &gateway, true), "so a refused gateway can fall back to the host"));
+        spec_with(0, &["nameserver=8.8.8.8"], &|s| assert!(!super::embedded_dns(s, &gateway, true), "--dns servers are asked directly"));
+        spec_with(run_flags::NET_HOST, &[], &|s| assert!(!super::embedded_dns(s, &gateway, true), "host networking keeps the VM's resolv.conf"));
     }
 
     #[test]

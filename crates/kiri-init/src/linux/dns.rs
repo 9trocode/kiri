@@ -6,6 +6,15 @@
 //! forwarded to the VM's upstream resolver (or the container's own `--dns`
 //! servers) and the answer relayed back. The 127.0.0.11 socket is opened in
 //! the container's namespace by this agent, so no process runs in there.
+//!
+//! In the VM the upstream is the Mac's resolver for the NAT network, at its
+//! gateway (192.168.64.1). macOS doesn't always answer there: after a
+//! network change, sleep or a VPN, lookups are refused or go unanswered
+//! while the Mac itself resolves fine. So a lookup the gateway refuses, or
+//! leaves unanswered for `FALLBACK_AFTER`, is asked again through the Kiri
+//! daemon on the Mac, over vsock, which asks the Mac's own resolvers
+//! (crates/kiri/src/daemon/dns.rs). A container's own `--dns` servers are
+//! never second-guessed.
 
 use std::collections::HashMap;
 use std::io::{self, Read};
@@ -24,6 +33,12 @@ const FORWARD_TIMEOUT: Duration = Duration::from_secs(5);
 /// At most this many forwarded queries in flight (each has its own socket);
 /// more are dropped, and the client asks again.
 const MAX_PENDING: usize = 256;
+/// A lookup the VM's resolver hasn't answered within this goes through the
+/// host (VM only). Gateway answers take milliseconds; a slow recursive one
+/// that loses the race is simply replaced by the host's.
+const FALLBACK_AFTER: Duration = Duration::from_secs(1);
+/// Largest reply the host relay may send (a DNS over TCP frame's limit).
+const MAX_RELAYED: usize = 2 + 65_535;
 
 /// Docker's embedded DNS address, inside each container.
 pub const EMBEDDED: [u8; 4] = [127, 0, 0, 11];
@@ -42,7 +57,8 @@ struct Pending {
     /// Its own socket, connected to the resolver: a fresh source port for
     /// every query, as Docker's embedded DNS does, so one lost or blocked
     /// flow doesn't take the resolver away from every later query, and an
-    /// answer has to guess the port as well as the ID.
+    /// answer has to guess the port as well as the ID. Once the query goes
+    /// through the host, the vsock stream to it instead.
     sock: OwnedFd,
     /// The ID it went out with.
     our: u16,
@@ -52,6 +68,13 @@ struct Pending {
     id: u16,
     question: Vec<u8>,
     sent: Instant,
+    /// The query as sent (with `our` ID), to send again through the host.
+    query: Vec<u8>,
+    /// It may still go through the host: in the VM, asked of the VM's own
+    /// resolver (not `--dns` servers), and not tried there yet.
+    may_relay: bool,
+    /// Sent through the host: the reply's bytes so far, `u16 len | reply`.
+    relayed: Option<Vec<u8>>,
 }
 
 /// One name's IPv6 addresses, each with its container's IPv4 address.
@@ -68,6 +91,9 @@ pub struct Dns {
     /// Container address → its `--dns` servers, used instead of the VM's.
     clients: HashMap<[u8; 4], Vec<[u8; 4]>>,
     pending: Vec<Pending>,
+    /// Lookups the VM's resolver fails go through the host (in the VM; a
+    /// Linux host's agent asks the host's resolvers itself).
+    pub relay: bool,
 }
 
 fn udp_socket() -> io::Result<OwnedFd> {
@@ -220,21 +246,27 @@ impl Dns {
     pub fn on_readable(&mut self, fd: RawFd, upstream: &[[u8; 4]]) {
         let mut buf = [0u8; 1500];
         if let Some(at) = self.pending.iter().position(|p| p.sock.as_raw_fd() == fd) {
+            if self.pending[at].relayed.is_some() {
+                self.read_relayed(at);
+                return;
+            }
             // A forwarded answer: hand it back to whoever asked.
             loop {
                 // SAFETY: receiving into a buffer we own.
                 let n = unsafe { libc::recv(fd, buf.as_mut_ptr().cast(), buf.len(), 0) };
+                if n < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ECONNREFUSED) {
+                    // Nothing listens at the resolver: ask the host now
+                    // rather than wait for the client to give up.
+                    self.relay(at);
+                    break;
+                }
                 if n < 12 {
                     break;
                 }
                 let msg = &mut buf[..n as usize];
                 let p = &self.pending[at];
                 if u16::from_be_bytes([msg[0], msg[1]]) == p.our && response_matches(msg, p) {
-                    let p = self.pending.swap_remove(at);
-                    msg[0..2].copy_from_slice(&p.id.to_be_bytes());
-                    if let Some(s) = self.servers.iter().find(|s| s.sock.as_raw_fd() == p.server) {
-                        send_to(s.sock.as_raw_fd(), msg, &p.client);
-                    }
+                    self.answered(at, msg);
                     break;
                 }
             }
@@ -309,31 +341,169 @@ impl Dns {
         let now = Instant::now();
         self.pending.retain(|p| now.duration_since(p.sent) < FORWARD_TIMEOUT);
         let key = self.servers[server].container.map_or(client.sin_addr.s_addr.to_ne_bytes(), |(_, owner)| owner);
-        let own = self.clients.get(&key).and_then(|v| v.first());
-        let Some(dest) = own.or(upstream.first()).copied() else { return };
+        let own = self.clients.get(&key).and_then(|v| v.first()).copied();
         if self.pending.len() >= MAX_PENDING {
             return;
         }
         let Some((_, _, end)) = parse_question(q) else {
             return;
         };
-        let Ok(sock) = udp_socket() else { return };
-        let to = sockaddr(dest, 53);
-        // Connected, so it only receives datagrams from this resolver.
-        // SAFETY: connecting to a valid sockaddr_in.
-        if unsafe { libc::connect(sock.as_raw_fd(), (&to as *const libc::sockaddr_in).cast(), std::mem::size_of::<libc::sockaddr_in>() as u32) } != 0 {
-            return;
-        }
         let Some(our) = random_id() else { return };
         let mut msg = q.to_vec();
         let id = u16::from_be_bytes([msg[0], msg[1]]);
         msg[0..2].copy_from_slice(&our.to_be_bytes());
-        // SAFETY: sending a buffer we own on a connected socket.
-        if unsafe { libc::send(sock.as_raw_fd(), msg.as_ptr().cast(), msg.len(), 0) } < 0 {
+        let may_relay = self.relay && own.is_none();
+        let dest = own.or(upstream.first().copied());
+        // No resolver yet, or it can't be reached: the host, if allowed.
+        let (sock, relayed) = match dest.and_then(|d| ask(d, &msg)) {
+            Some(s) => (s, false),
+            None if may_relay => match relay_stream(&msg) {
+                Some(s) => (s, true),
+                None => return,
+            },
+            None => return,
+        };
+        let p = Pending {
+            sock,
+            our,
+            server: self.servers[server].sock.as_raw_fd(),
+            client,
+            id,
+            question: q[12..end].to_vec(),
+            sent: now,
+            query: msg,
+            may_relay: may_relay && !relayed,
+            relayed: relayed.then(Vec::new),
+        };
+        self.pending.push(p);
+    }
+
+    /// Hands a matching answer to whoever asked, and forgets the query.
+    fn answered(&mut self, at: usize, msg: &mut [u8]) {
+        let p = self.pending.swap_remove(at);
+        msg[0..2].copy_from_slice(&p.id.to_be_bytes());
+        if let Some(s) = self.servers.iter().find(|s| s.sock.as_raw_fd() == p.server) {
+            send_to(s.sock.as_raw_fd(), msg, &p.client);
+        }
+    }
+
+    /// Sends pending query `at` again, through the host, once.
+    fn relay(&mut self, at: usize) {
+        let p = &mut self.pending[at];
+        if !p.may_relay {
             return;
         }
-        self.pending.push(Pending { sock, our, server: self.servers[server].sock.as_raw_fd(), client, id, question: q[12..end].to_vec(), sent: now });
+        p.may_relay = false;
+        if let Some(stream) = relay_stream(&p.query) {
+            p.sock = stream;
+            p.relayed = Some(Vec::new());
+            p.sent = Instant::now();
+        }
     }
+
+    /// Reads the host's reply to query `at` as it arrives.
+    fn read_relayed(&mut self, at: usize) {
+        let fd = self.pending[at].sock.as_raw_fd();
+        let mut buf = [0u8; 4096];
+        let mut eof = false;
+        loop {
+            // SAFETY: reading into a buffer we own.
+            let n = unsafe { libc::read(fd, buf.as_mut_ptr().cast(), buf.len()) };
+            if n > 0 {
+                let got = self.pending[at].relayed.get_or_insert_with(Vec::new);
+                got.extend_from_slice(&buf[..n as usize]);
+                if got.len() > MAX_RELAYED {
+                    eof = true;
+                    break;
+                }
+                continue;
+            }
+            if n < 0 && io::Error::last_os_error().kind() == io::ErrorKind::WouldBlock {
+                break;
+            }
+            eof = true;
+            break;
+        }
+        let got = self.pending[at].relayed.take().unwrap_or_default();
+        match framed_reply(&got) {
+            Some(reply) => {
+                let mut msg = reply.to_vec();
+                let p = &self.pending[at];
+                if msg.len() >= 12 && u16::from_be_bytes([msg[0], msg[1]]) == p.our && response_matches(&msg, p) {
+                    self.answered(at, &mut msg);
+                } else {
+                    self.pending.swap_remove(at);
+                }
+            }
+            // Gone before a whole reply: the client asks again.
+            None if eof => {
+                self.pending.swap_remove(at);
+            }
+            None => self.pending[at].relayed = Some(got),
+        }
+    }
+
+    /// Sends lookups the VM's resolver has left unanswered too long
+    /// through the host. Called on every turn of the agent's loop.
+    pub fn on_timer(&mut self) {
+        let now = Instant::now();
+        for at in 0..self.pending.len() {
+            let p = &self.pending[at];
+            if p.may_relay && now.duration_since(p.sent) >= FALLBACK_AFTER {
+                self.relay(at);
+            }
+        }
+    }
+
+    /// Milliseconds until `on_timer` has something to do; -1 for never.
+    pub fn timeout_ms(&self) -> i32 {
+        let now = Instant::now();
+        self.pending
+            .iter()
+            .filter(|p| p.may_relay)
+            .map(|p| FALLBACK_AFTER.saturating_sub(now.duration_since(p.sent)).as_millis().min(i32::MAX as u128) as i32)
+            .min()
+            .unwrap_or(-1)
+    }
+}
+
+/// A UDP socket connected to `dest`:53 with `msg` sent on it, or None if
+/// it couldn't be sent (no route, the network down).
+fn ask(dest: [u8; 4], msg: &[u8]) -> Option<OwnedFd> {
+    let sock = udp_socket().ok()?;
+    let to = sockaddr(dest, 53);
+    // Connected, so it only receives datagrams from this resolver.
+    // SAFETY: connecting to a valid sockaddr_in.
+    if unsafe { libc::connect(sock.as_raw_fd(), (&to as *const libc::sockaddr_in).cast(), std::mem::size_of::<libc::sockaddr_in>() as u32) } != 0 {
+        return None;
+    }
+    // SAFETY: sending a buffer we own on a connected socket.
+    if unsafe { libc::send(sock.as_raw_fd(), msg.as_ptr().cast(), msg.len(), 0) } < 0 {
+        return None;
+    }
+    Some(sock)
+}
+
+/// A stream to the host's DNS relay with `msg` sent on it, non-blocking
+/// for the reply.
+fn relay_stream(msg: &[u8]) -> Option<OwnedFd> {
+    let stream = super::transport::dial(kiri_proto::DNS_RELAY_PORT).ok()?;
+    let mut frame = Vec::with_capacity(2 + msg.len());
+    frame.extend_from_slice(&u16::try_from(msg.len()).ok()?.to_be_bytes());
+    frame.extend_from_slice(msg);
+    // A few hundred bytes on a fresh stream: one write, never short.
+    // SAFETY: writing a buffer we own to a socket we own.
+    if unsafe { libc::write(stream.as_raw_fd(), frame.as_ptr().cast(), frame.len()) } != frame.len() as isize {
+        return None;
+    }
+    sys::set_nonblocking(stream.as_raw_fd()).ok()?;
+    Some(stream)
+}
+
+/// The reply in `u16 len | reply`, once all of it is there.
+fn framed_reply(got: &[u8]) -> Option<&[u8]> {
+    let len = u16::from_be_bytes([*got.first()?, *got.get(1)?]) as usize;
+    got.get(2..2 + len)
 }
 
 /// A UDP socket bound to `ip`:53.
@@ -560,7 +730,82 @@ mod tests {
             id: 7,
             question: b"\x03www\x07example\x03com\x00\x00\x01\x00\x01".to_vec(),
             sent: Instant::now(),
+            query: Vec::new(),
+            may_relay: false,
+            relayed: None,
         }
+    }
+
+    #[test]
+    fn a_relayed_reply_is_whole_only_once_its_length_is_there() {
+        use super::framed_reply;
+        assert_eq!(framed_reply(&[]), None);
+        assert_eq!(framed_reply(&[0]), None);
+        assert_eq!(framed_reply(&[0, 3, 1, 2]), None);
+        assert_eq!(framed_reply(&[0, 3, 1, 2, 3]), Some(&[1u8, 2, 3][..]));
+        assert_eq!(framed_reply(&[0, 0]), Some(&[][..]));
+    }
+
+    #[test]
+    fn only_lookups_the_vm_resolver_may_miss_wait_for_the_host() {
+        let mut dns = Dns::default();
+        assert_eq!(dns.timeout_ms(), -1, "nothing pending");
+        dns.pending.push(pending());
+        assert_eq!(dns.timeout_ms(), -1, "--dns servers are not second-guessed");
+        let mut p = pending();
+        p.may_relay = true;
+        dns.pending.push(p);
+        let t = dns.timeout_ms();
+        assert!((0..=1000).contains(&t), "{t}");
+        // Past the wait it is tried through the host once, whatever comes of it.
+        dns.pending[1].sent = Instant::now() - super::FALLBACK_AFTER;
+        assert_eq!(dns.timeout_ms(), 0);
+        dns.on_timer();
+        assert!(!dns.pending[1].may_relay);
+        assert_eq!(dns.timeout_ms(), -1);
+    }
+
+    #[test]
+    fn the_hosts_reply_goes_back_to_whoever_asked() {
+        use std::net::UdpSocket;
+        use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        client.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+        let std::net::SocketAddr::V4(addr) = client.local_addr().unwrap() else { panic!() };
+        let mut dns = Dns::default();
+        dns.servers.push(Server { bridges: vec!["kiri1".into()], sock: udp_socket().unwrap(), container: None });
+        let mut fds = [0; 2];
+        // SAFETY: `fds` has room for the pair.
+        assert_eq!(unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_NONBLOCK, 0, fds.as_mut_ptr()) }, 0);
+        // SAFETY: fresh descriptors from socketpair.
+        let (ours, host) = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
+        let mut p = pending();
+        p.sock = ours;
+        p.server = dns.servers[0].sock.as_raw_fd();
+        p.client = super::sockaddr(addr.ip().octets(), addr.port());
+        p.relayed = Some(Vec::new());
+        let question = p.question.clone();
+        dns.pending.push(p);
+        let mut reply = vec![0, 1, 0x81, 0x80, 0, 1, 0, 0, 0, 0, 0, 0];
+        reply.extend_from_slice(&question);
+        let mut frame = (reply.len() as u16).to_be_bytes().to_vec();
+        frame.extend_from_slice(&reply);
+        let send = |b: &[u8]| {
+            // SAFETY: writing a buffer we own to our end of the pair.
+            assert_eq!(unsafe { libc::write(host.as_raw_fd(), b.as_ptr().cast(), b.len()) }, b.len() as isize)
+        };
+        // Half a reply waits for the rest.
+        send(&frame[..5]);
+        let fd = dns.pending[0].sock.as_raw_fd();
+        dns.on_readable(fd, &[]);
+        assert_eq!(dns.pending.len(), 1);
+        send(&frame[5..]);
+        dns.on_readable(fd, &[]);
+        assert!(dns.pending.is_empty());
+        let mut buf = [0u8; 512];
+        let n = client.recv(&mut buf).unwrap();
+        assert_eq!(&buf[..2], &[0, 7], "the client's own ID");
+        assert_eq!(&buf[2..n], &reply[2..]);
     }
 
     #[test]

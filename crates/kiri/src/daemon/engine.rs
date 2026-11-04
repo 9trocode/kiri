@@ -668,6 +668,11 @@ impl Engine {
         if cfg!(target_os = "macos") {
             vm.listen(super::ports::ENGINE_API_PORT, Box::new(super::ports::serve_engine_api))?;
         }
+        // Container lookups the VM's gateway resolver fails, asked of the
+        // Mac's own (VM only: a Linux host's agent asks the host's itself).
+        if cfg!(target_os = "macos") {
+            vm.listen(kiri_proto::DNS_RELAY_PORT, Box::new(super::dns::serve_relay))?;
+        }
         // Everything else on the guest's disk belongs to containers that are gone.
         let keep: Vec<String> = self.lock().containers.keys().cloned().collect();
         vm.retain(&keep)?;

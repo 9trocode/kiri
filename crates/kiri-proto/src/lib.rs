@@ -167,6 +167,11 @@ pub enum Msg<'a> {
 /// vsock port of the guest's copy service: one connection per copy.
 pub const COPY_PORT: u32 = 1028;
 
+/// vsock port of the host's DNS relay (VM only). The agent sends a lookup
+/// the VM's gateway resolver didn't answer as `u16 len | query`, as DNS over
+/// TCP frames it, and gets `u16 len | reply` back: one lookup per connection.
+pub const DNS_RELAY_PORT: u32 = 1037;
+
 pub mod copy_op {
     pub const IN: u8 = 1;
     pub const OUT: u8 = 2;

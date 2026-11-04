@@ -151,6 +151,8 @@ pub fn run(_args: &[String]) -> io::Result<()> {
         }
     }
 
+    watch_own_app(engine.clone(), socket.clone());
+
     let on_signal = engine.clone();
     let sock = socket.clone();
     std::thread::Builder::new().name("kiri-signals".into()).spawn(move || {
@@ -178,6 +180,26 @@ pub fn run(_args: &[String]) -> io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// When the app this daemon runs from is deleted (appwatch.rs): docker
+/// build handed back (buildwith.rs: what was there before; the choice
+/// stays, so the app taken up again takes it again), and the engine stops.
+fn watch_own_app(engine: std::sync::Arc<engine::Engine>, socket: std::path::PathBuf) {
+    crate::appwatch::watch(move |exe| {
+        diag::error!("the app this engine runs from was deleted; stopping and handing docker build back", path = exe.display());
+        if let Err(e) = crate::buildwith::places().and_then(|p| p.give_back()) {
+            diag::warn!("docker build not handed back", error = e);
+        }
+        #[cfg(target_os = "macos")]
+        nfs::unmount();
+        let _ = std::fs::remove_file(&socket);
+        engine.shutdown();
+        std::thread::sleep(Duration::from_millis(50));
+        // 0: launchd restarts the engine on failure only, and there is
+        // nothing left to restart.
+        std::process::exit(0);
+    });
 }
 
 /// Serves container files over NFS and mounts them at ~/Kiri.

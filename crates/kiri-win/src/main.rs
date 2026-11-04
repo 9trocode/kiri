@@ -46,6 +46,11 @@ mod builds;
 #[cfg(windows)]
 #[path = "../../kiri/src/buildwith.rs"]
 mod buildwith;
+// Kiri's program moved or deleted from where it started: the Mac's and
+// Linux's own crates/kiri/src/appwatch.rs.
+#[cfg(windows)]
+#[path = "../../kiri/src/appwatch.rs"]
+mod appwatch;
 // An image's Layers and Security tabs, asked of the engine in WSL.
 #[cfg(windows)]
 mod scan;
@@ -139,6 +144,22 @@ fn main() -> std::process::ExitCode {
         serve::log(&format!("dns on 127.0.0.1:53: {e}"));
     }
     engine::start(engine::Env { distro: cfg.distro.clone(), pipe: cfg.pipe.clone() });
+    // Its folder renamed, moved or deleted around it (Windows won't delete
+    // a running program itself): docker build handed back as it was before
+    // Kiri took it, the choice kept for when Kiri runs again, and Kiri quits.
+    appwatch::watch(|exe| {
+        serve::log(&format!("{} is gone from where Kiri started; handing docker build back and quitting", exe.display()));
+        if let Err(e) = buildwith::places().and_then(|p| p.give_back()) {
+            serve::log(&format!("docker build not handed back: {e}"));
+        }
+        app::Handle.run(|_| {
+            // SAFETY: ends the window's message loop; run on its thread.
+            unsafe { windows::Win32::UI::WindowsAndMessaging::PostQuitMessage(0) }
+        });
+        // No window to quit (it never opened): quit from here.
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        std::process::exit(0);
+    });
     // The engine starts when the page says `ready`, and with the window
     // hidden (--background, as from the login shortcut) no page loads: after
     // kiri-win restarted, docker got no answer until Start was pressed.

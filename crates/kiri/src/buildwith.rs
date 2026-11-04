@@ -209,8 +209,9 @@ impl Places {
     }
 
     /// Build with Docker: puts back what `take` kept, where it is still
-    /// as Kiri left it.
-    fn give_back(&self) -> io::Result<()> {
+    /// as Kiri left it. Also when Kiri's program is gone (appwatch.rs):
+    /// the choice itself is kept, so `apply` takes it again later.
+    pub fn give_back(&self) -> io::Result<()> {
         let mut s = self.state();
         let before = s["before"].take();
         if before.is_null() {
@@ -491,6 +492,27 @@ mod tests {
         assert!(!p.current().exists());
         // The context's builder stays: it serves `docker --context kiri build`.
         assert!(p.instance("kiri").is_file());
+    }
+
+    #[test]
+    fn a_second_kiri_whose_app_is_gone_hands_builds_back_to_the_first() {
+        let d = scratch("second");
+        let main = places(&d);
+        builder(&main);
+        main.choose(With::Kiri).unwrap();
+        // A development build of Kiri, its own state and builder, takes them.
+        let dev = Places { state: d.join(".kiri-layers/build.json"), builder: "kiri-layers-build".into(), context: "kiri-layers".into(), ..places(&d) };
+        let i = json!({"Name": "kiri-layers-build", "Driver": "docker-container", "Nodes": [{"Name": "kiri-layers-build0", "Endpoint": "kiri-layers"}], "Dynamic": false});
+        write_bytes(&dev.instance("kiri-layers-build"), i.to_string().as_bytes()).unwrap();
+        dev.choose(With::Kiri).unwrap();
+        assert!(dev.taken() && !main.taken());
+        // Its app deleted: the daemon hands back (daemon/mod.rs).
+        dev.give_back().unwrap();
+        assert!(main.taken(), "builds go to the first Kiri again");
+        assert_eq!(dev.saved(), Some(With::Kiri), "the choice stays");
+        // Taken up again, it takes them again.
+        dev.apply(None).unwrap();
+        assert!(dev.taken());
     }
 
     #[test]

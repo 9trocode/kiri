@@ -141,6 +141,9 @@ impl Guest {
             share: opts.data_disk.then(|| (PathBuf::from("/"), "kiri-mac".to_owned())),
             rosetta_tag: opts.data_disk.then(|| "rosetta".to_owned()),
         };
+        if !cfg.kernel.is_file() {
+            return Err(missing_kernel(&cfg.kernel, std::env::current_exe().ok().as_deref()));
+        }
         Ok(cfg)
     }
 
@@ -402,6 +405,17 @@ fn translated() -> bool {
     // Rosetta the name does not exist and `on` stays 0.
     unsafe { libc::sysctlbyname(c"sysctl.proc_translated".as_ptr(), (&mut on as *mut libc::c_int).cast(), &mut len, std::ptr::null_mut(), 0) };
     on == 1
+}
+
+/// The error for a guest kernel that isn't there. Mostly the app was
+/// deleted or moved while its engine ran: say that, not a bare path.
+#[cfg(target_os = "macos")]
+fn missing_kernel(kernel: &std::path::Path, exe: Option<&std::path::Path>) -> io::Error {
+    let msg = match exe {
+        Some(exe) if !exe.exists() => format!("{} was deleted or moved while it ran: open Kiri again from where it is now", crate::flavor::APP),
+        _ => format!("the guest kernel {} is missing: reinstall Kiri", kernel.display()),
+    };
+    io::Error::new(io::ErrorKind::NotFound, msg)
 }
 
 #[cfg(target_os = "macos")]

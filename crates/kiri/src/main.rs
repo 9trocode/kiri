@@ -12,6 +12,10 @@ mod boot;
 #[cfg(unix)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod builds;
+// The engine stops when its app is deleted under it (kiri-win includes it
+// for Windows).
+#[cfg(unix)]
+mod appwatch;
 // Which builder plain `docker build` uses: Docker's or Kiri's.
 #[cfg(unix)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]

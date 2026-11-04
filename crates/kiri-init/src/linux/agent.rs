@@ -62,7 +62,9 @@ pub fn serve(mut conn: File, paths: &Paths) -> io::Result<()> {
     // On a Linux host, SIGTERM or SIGINT stops the agent as Shutdown does.
     let term = if host_process { Some(term_signals()?) } else { None };
     let mut bridges = Bridges::default();
+    // In the VM, lookups the gateway's resolver fails go through the host.
     let mut dns = super::dns::Dns::default();
+    dns.relay = !host_process;
     let forward = super::relay::listen()?;
     // host.docker.internal's relay to the Mac (VM only). A Linux host maps
     // that name to the bridge gateway and redirects nothing here, so the
@@ -130,6 +132,10 @@ pub fn serve(mut conn: File, paths: &Paths) -> io::Result<()> {
             let wait = TTY_HUP_WAIT.as_millis() as i32;
             timeout = if timeout < 0 { wait } else { timeout.min(wait) };
         }
+        let wait = dns.timeout_ms();
+        if wait >= 0 {
+            timeout = if timeout < 0 { wait } else { timeout.min(wait) };
+        }
         // SAFETY: `fds` is a valid array of pollfd of the given length.
         let n = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, timeout) };
         if n < 0 {
@@ -156,6 +162,8 @@ pub fn serve(mut conn: File, paths: &Paths) -> io::Result<()> {
                 eprintln!("kiri-init: dhcp: {e}");
             }
         }
+
+        dns.on_timer();
 
         // Output and input first, so a process's last words go out before its exit.
         for pfd in &fds[3..] {
