@@ -5171,9 +5171,15 @@ function stopReason(c) {
 // the strictest images take it.
 function genPassword() {
   const sets = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnpqrstuvwxyz", "23456789", "-_.@%"], all = sets.join("");
-  const r = crypto.getRandomValues(new Uint32Array(20));
-  const out = [...r].map((n, i) => (i < 4 ? sets[i] : all)[n % (i < 4 ? sets[i] : all).length]);
-  for (let i = out.length - 1; i > 0; i--) { const j = r[i] % (i + 1); [out[i], out[j]] = [out[j], out[i]]; }
+  // A uniform number below n: fresh random values, dropping the few at the
+  // top of the range that would make some answers likelier than others.
+  const below = (n) => {
+    const limit = 2 ** 32 - (2 ** 32 % n), r = new Uint32Array(1);
+    do crypto.getRandomValues(r); while (r[0] >= limit);
+    return r[0] % n;
+  };
+  const out = Array.from({ length: 20 }, (_, i) => { const set = i < 4 ? sets[i] : all; return set[below(set.length)]; });
+  for (let i = out.length - 1; i > 0; i--) { const j = below(i + 1); [out[i], out[j]] = [out[j], out[i]]; }
   return out.join("");
 }
 const strong = (v) => v.length >= 8 && /[A-Z]/.test(v) && /[a-z]/.test(v) && /\d/.test(v) && /[^A-Za-z0-9]/.test(v);
