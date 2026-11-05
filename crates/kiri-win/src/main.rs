@@ -13,6 +13,10 @@
 
 #[cfg(windows)]
 mod app;
+// The window's page, put together as on the Mac and Linux.
+#[cfg(windows)]
+#[path = "../../kiri/src/ui/assemble.rs"]
+mod assemble;
 #[cfg(windows)]
 mod client;
 #[cfg(windows)]
@@ -29,6 +33,9 @@ mod serve;
 mod win;
 #[cfg(windows)]
 mod setup;
+// The built-in terminal's shells, on ConPTY.
+#[cfg(windows)]
+mod term;
 #[cfg(windows)]
 mod hub;
 #[cfg(windows)]

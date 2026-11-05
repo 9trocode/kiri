@@ -19,7 +19,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 use objc2_web_kit::{WKScriptMessage, WKScriptMessageHandler, WKUserContentController, WKWebView, WKWebViewConfiguration};
 
-use super::{Cmd, ICONS_JS, PAGE, diag, emit, engine, json_str, menu_state, prefs, reopen_after_exit, update_check};
+use super::{Cmd, PAGE, diag, emit, engine, json_str, menu_state, prefs, reopen_after_exit, update_check};
 
 thread_local! {
     /// The page, reachable from closures the engine thread schedules on the
@@ -123,7 +123,7 @@ fn make_window(mtm: MainThreadMarker, tx: Sender<Cmd>, autostart: bool, view: Op
         // Let the page paint its own background instead of white.
         let no: Retained<AnyObject> = msg_send![objc2::class!(NSNumber), numberWithBool: false];
         let _: () = msg_send![&webview, setValue: &*no, forKey: &*NSString::from_str("drawsBackground")];
-        webview.loadHTMLString_baseURL(&NSString::from_str(&PAGE.replacen("/*ICONS*/", ICONS_JS, 1)), None);
+        webview.loadHTMLString_baseURL(&NSString::from_str(&super::assemble::page(PAGE)), None);
         webview
     };
     window.setContentView(Some(&webview));
@@ -259,7 +259,8 @@ fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     app_menu.addItem(&item("Settings…", sel!(openSettings:), ","));
     app_menu.addItem(&NSMenuItem::separatorItem(mtm));
     app_menu.addItem(&item(&format!("Hide {}", crate::flavor::APP), sel!(hide:), "h"));
-    app_menu.addItem(&item("Close Window", sel!(performClose:), "w"));
+    // ⌘W asks the page first: in the built-in terminal it closes a pane.
+    app_menu.addItem(&item("Close Window", sel!(closeKey:), "w"));
     app_menu.addItem(&NSMenuItem::separatorItem(mtm));
     app_menu.addItem(&item(&format!("Quit {}", crate::flavor::APP), sel!(terminate:), "q"));
     let app_item = NSMenuItem::new(mtm);
@@ -317,6 +318,15 @@ pub(super) fn drag() {
     });
 }
 
+/// Closes the window, as the menu's Close Window did before ⌘W went to the page.
+pub(super) fn close_window() {
+    WINDOW.with(|w| {
+        if let Some(window) = w.borrow().as_ref() {
+            window.performClose(None);
+        }
+    });
+}
+
 pub(super) fn zoom() {
     WINDOW.with(|w| {
         if let Some(window) = w.borrow().as_ref() {
@@ -332,6 +342,15 @@ pub(super) fn copy(text: &str) {
         let _ = c.stdin.take().map(|mut i| i.write_all(text.as_bytes()));
         let _ = c.wait();
     }
+}
+
+/// The clipboard's text, handed to `done` off the main thread.
+pub(super) fn paste(done: impl FnOnce(String) + Send + 'static) {
+    std::thread::spawn(move || {
+        if let Ok(out) = std::process::Command::new("/usr/bin/pbpaste").output() {
+            done(String::from_utf8_lossy(&out.stdout).into_owned());
+        }
+    });
 }
 
 /// The installed font families, sorted; `mono` keeps the fixed-pitch ones.
@@ -492,6 +511,13 @@ define_class!(
         fn check_for_updates(&self, _sender: Option<&AnyObject>) {
             show_window(self.mtm());
             std::thread::spawn(|| update_check(true));
+        }
+
+        /// ⌘W: the page closes the terminal's pane when it has the focus,
+        /// and otherwise asks for the window to close (`close_window`).
+        #[unsafe(method(closeKey:))]
+        fn close_key(&self, _sender: Option<&AnyObject>) {
+            emit(r#"{"type":"closekey"}"#.to_owned());
         }
 
         #[unsafe(method(textBigger:))]

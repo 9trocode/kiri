@@ -200,7 +200,7 @@ fn wsl_installed() -> bool {
     quiet("wsl.exe").arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
 }
 
-fn distros() -> Vec<String> {
+pub(crate) fn distros() -> Vec<String> {
     quiet("wsl.exe").args(["-l", "-q"]).output().map(|o| wsl_text(&o.stdout).lines().map(|l| l.trim().to_owned()).filter(|l| !l.is_empty()).collect()).unwrap_or_default()
 }
 

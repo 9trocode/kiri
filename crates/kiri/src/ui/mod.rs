@@ -30,6 +30,10 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::{import, setup, update};
 
+mod assemble;
+#[cfg(unix)]
+mod term;
+mod termwire;
 mod brands;
 mod recheck;
 mod detail;
@@ -45,8 +49,6 @@ use crate::client;
 use crate::diag;
 
 const PAGE: &str = include_str!("index.html");
-/// The page's UI icons, spliced into its `/*ICONS*/` placeholder.
-const ICONS_JS: &str = include_str!("icons.js");
 
 /// How often the VM panel's figures refresh. The lists refresh on events.
 const TICK: Duration = Duration::from_secs(2);
@@ -439,7 +441,7 @@ pub(crate) fn prefs() -> serde_json::Value {
 }
 
 fn set_pref(name: &str, value: serde_json::Value) {
-    if !matches!(name, "font" | "mono" | "scale" | "domainsAsked" | "theme" | "accent" | "importSeen" | "updateAuto" | "updateSkip" | "updateSnoozeUntil" | "columnWidths" | "crashReports" | "ctxSnooze" | "ctxBack" | "logSize" | "starAsked" | "setupSkip") {
+    if !matches!(name, "font" | "mono" | "scale" | "termH" | "termFs" | "termFont" | "domainsAsked" | "theme" | "accent" | "importSeen" | "updateAuto" | "updateSkip" | "updateSnoozeUntil" | "columnWidths" | "crashReports" | "ctxSnooze" | "ctxBack" | "logSize" | "starAsked" | "setupSkip") {
         return;
     }
     let Some(path) = prefs_path() else { return };
@@ -1586,6 +1588,29 @@ fn handle(text: &str, tx: &Sender<Cmd>, autostart: bool, view: Option<&str>) {
             sharing::sign_out();
             Ok(())
         }
+        // The built-in terminal: its shells, and its own clipboard and links.
+        "term" => {
+            match msg.name.as_str() {
+                // A selection can be a whole screen of output.
+                "copy" => {
+                    if let Some(text) = msg.value.as_str().filter(|t| !t.is_empty() && t.len() <= termwire::COPY_MAX) {
+                        window::copy(text);
+                    }
+                }
+                "paste" => {
+                    let id = msg.id;
+                    window::paste(move |text| emit(termwire::paste(&id, &text)));
+                }
+                // A link in a shell's output: web pages only, never a file or an app's scheme.
+                "link" => {
+                    if let Some(url) = msg.value.as_str().filter(|u| termwire::web_link(u)) {
+                        open(url);
+                    }
+                }
+                action => term::handle(action, &msg.id, &msg.value, emit),
+            }
+            Ok(())
+        }
         // The page can't write the clipboard itself; IDs and short text only.
         "copy" => {
             if !msg.name.is_empty() && msg.name.len() <= 4096 {
@@ -1851,6 +1876,12 @@ fn handle(text: &str, tx: &Sender<Cmd>, autostart: bool, view: Option<&str>) {
         // until the next click.
         "drag" => {
             window::drag();
+            Ok(())
+        }
+        // ⌘W when the built-in terminal doesn't have the focus.
+        #[cfg(target_os = "macos")]
+        "closewindow" => {
+            window::close_window();
             Ok(())
         }
         "zoom" => {

@@ -5,7 +5,9 @@ kiri.on({ type: "status", version: "0.1.4", dev: true, app: "Kiri Dev", ours: "k
 const R = [];
 const t = (name, fn) => { try { fn(); R.push("PASS " + name); } catch (e) { R.push("FAIL " + name + ": " + e.message); } };
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(m + ": got " + JSON.stringify(a) + " want " + JSON.stringify(b)); };
-const GLYPHS = [".ctx-flow .arr", ".sh-chev", ".sc-close", ".sh-x", "tr.group .chev"];
+// The terminal emulator's own sheet (xterm.css, vendored): its scrollbar
+// arrows are glyphs, and the terminal's text has its own size.
+const GLYPHS = [".ctx-flow .arr", ".sh-chev", ".sc-close", ".sh-x", "tr.group .chev", ".xterm"];
 t("every font size is on the scale", () => {
   const off = [];
   for (const sheet of document.styleSheets) for (const r of sheet.cssRules) {

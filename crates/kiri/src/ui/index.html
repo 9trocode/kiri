@@ -1919,7 +1919,108 @@ body.beat { --beat: ring 1.6s ease-out; }
 .rp-id .val { font: 600 var(--fs-head) var(--mono-font); color: var(--text); user-select: text; -webkit-user-select: text; }
 .rp-id .btn { margin-left: auto; }
 .rp-dialog .err { font-size: var(--fs); color: var(--red-text); }
+/* --- The built-in terminal: a panel under the page (tests/ui/terminal.js) ----------- */
+:root { --term-bg: #0B0F13; --term-fg: #D7DCE1; }
+@media (prefers-color-scheme: light) { :root { --term-bg: #FFFFFF; --term-fg: #1F2328; } }
+main { position: relative; }
+/* Raised above the page: a shadow up onto it, a lighter top edge and a lifted
+   header, so the panel never reads as more of the page. */
+.htdrawer { flex: none; height: var(--ht-h, 300px); border-top: 1px solid color-mix(in srgb, var(--text) 16%, var(--line)); position: relative; z-index: 3; display: flex; flex-direction: column; min-height: 0; background: var(--panel);
+  box-shadow: 0 -10px 28px rgb(0 0 0 / .32), 0 -1px 0 rgb(0 0 0 / .25); }
+@media (prefers-color-scheme: light) { .htdrawer { box-shadow: 0 -8px 22px rgb(0 0 0 / .10); } }
+.htdrawer[hidden] { display: none; }
+.htdrawer.max { position: absolute; inset: 0; height: auto; border-top: 0; z-index: 10; }
+.htgrip { position: absolute; top: -3px; left: 0; right: 0; height: 6px; cursor: row-resize; z-index: 5; }
+.htdrawer.max .htgrip { display: none; }
+.hthead { display: flex; align-items: center; height: 32px; padding: 0 6px 0 4px; border-bottom: 1px solid var(--line); gap: 2px; flex: none; background: color-mix(in srgb, var(--raised) 75%, var(--panel)); }
+.httabs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; }
+.httab { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 4px 0 9px; border-radius: 6px; color: var(--muted); cursor: pointer; white-space: nowrap; font-size: var(--fs); border: 0; background: none; font-family: inherit; }
+.httab:hover { background: var(--row-hover); color: var(--text); }
+.httab.on { background: var(--raised); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.httab .x { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; color: var(--faint); opacity: 0; }
+.httab:hover .x, .httab.on .x { opacity: 1; }
+.httab .pin { width: 16px; height: 16px; display: grid; place-items: center; color: var(--blue-light); }
+.httab .pin svg { width: 11px; height: 11px; stroke-width: 2; }
+.htctx { position: absolute; z-index: 35; width: 170px; padding: 5px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 14px 40px rgb(0 0 0 / .45); }
+.htctx[hidden] { display: none; }
+.htctx .mi { display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; cursor: pointer; color: var(--text); font: var(--fs) var(--ui-font); text-align: left; }
+.htctx .mi:hover { background: var(--blue); color: #fff; }
+.htctx .mi:disabled { color: var(--faint); background: none; cursor: default; }
+.httab .x:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+.hthead .grow { flex: 1; min-width: 10px; align-self: stretch; }
+.hthead .sep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; }
+.hthead .sb { width: 26px; height: 26px; }
+/* The panel's icons are lines: every one of them (tab ×, find arrows) gets a stroke. */
+.htdrawer svg, .httoggle svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.httab .x svg { width: 11px; height: 11px; stroke-width: 2; }
+.htfind .sb svg { width: 14px; height: 14px; }
+.htwrap { position: relative; flex: none; }
+.htbody { flex: 1; min-height: 0; display: flex; background: var(--term-bg); position: relative; }
+.htsplit { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.htsplit.v { flex-direction: column; }
+.htcell { display: flex; min-width: 0; min-height: 0; }
+/* Thick enough to see where one pane ends, with a wider grab area. */
+.htdiv { flex: none; background: color-mix(in srgb, var(--text) 12%, var(--panel)); position: relative; z-index: 2; transition: background-color .12s; }
+.htsplit.h > .htdiv { width: 4px; cursor: col-resize; }
+.htsplit.v > .htdiv { height: 4px; cursor: row-resize; }
+.htdiv::after { content: ""; position: absolute; inset: -3px; }
+.htdiv:hover, .htdiv.drag { background: var(--blue); }
+.htpane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.htpt { flex: none; height: 20px; display: none; align-items: center; gap: 6px; padding: 0 8px; font-size: var(--fs-small); color: var(--faint); border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); white-space: nowrap; overflow: hidden; }
+.htbody.many .htpt { display: flex; }
+.htname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.htpx { width: 16px; height: 16px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--faint); cursor: pointer; flex: none; opacity: 0; }
+.htpane:hover .htpx, .htpane.focus .htpx { opacity: 1; }
+.htpx:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+.htpx svg { width: 10px; height: 10px; stroke-width: 2; }
+.htpane.focus .htpt { color: var(--muted); }
+.htpane.focus .htpt::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--blue-light); flex: none; }
+.htbody.many .htpane:not(.focus) .htx { opacity: .62; }
+.htbody.zoomed .htsplit > .htdiv, .htbody.zoomed .htcell:not(:has(.htpane.focus)), .htbody.zoomed .htpane:not(.focus) { display: none; }
+/* xterm measures the page in pixels: the window's text size (zoom on the
+   body) is undone here, and the terminal has its own size instead. */
+.htx { flex: 1; min-height: 0; min-width: 0; padding: 4px 0 0 10px; zoom: var(--ht-unzoom, 1); }
+.htx .xterm { height: 100%; }
+.htx .xterm-viewport { scrollbar-width: thin; }
+.htmsg { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: 80%; text-align: center; color: var(--muted); }
+.htmsg b { display: block; color: var(--text); margin-bottom: 4px; }
+.htpop, .htmenu { position: absolute; z-index: 30; top: 30px; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 14px 40px rgb(0 0 0 / .45); }
+.htpop[hidden], .htmenu[hidden] { display: none; }
+.htpop { right: 0; width: 248px; padding: 12px; }
+.htpop .row { display: flex; align-items: center; gap: 8px; }
+.htpop .lbl { color: var(--muted); font-size: var(--fs-small); margin-bottom: 6px; display: flex; justify-content: space-between; }
+.htpop .lbl b { color: var(--text); font-variant-numeric: tabular-nums; }
+.htpop input[type=range] { flex: 1; accent-color: var(--blue); }
+.htpop .st { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; font: 600 var(--fs-head) var(--ui-font); }
+.htpop hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
+.htpop select { width: 100%; height: 26px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; font: var(--fs) var(--ui-font); padding: 0 6px; }
+.htpop .keys { color: var(--faint); font-size: var(--fs-small); margin-top: 8px; line-height: 1.8; }
+.htmenu { left: 0; width: 230px; padding: 5px; max-height: 320px; overflow: auto; }
+.htmenu .mi { display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: none; cursor: pointer; color: var(--text); font: var(--fs) var(--ui-font); text-align: left; }
+.htmenu .mi:hover { background: var(--blue); color: #fff; }
+.htmenu .mi .k { margin-left: auto; color: var(--faint); font-size: var(--fs-small); }
+.htmenu .mi:hover .k { color: #dbe7ff; }
+.htmenu .ml { color: var(--faint); font-size: var(--fs-small); padding: 6px 8px 3px; }
+.htmenu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.httoast { position: absolute; z-index: 40; top: 44px; left: 50%; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--line); padding: 5px 12px; border-radius: 8px; font: 600 var(--fs) var(--ui-font); pointer-events: none; opacity: 0; transition: opacity .15s; }
+.httoast.show { opacity: 1; }
+.htfind { position: absolute; z-index: 20; top: 6px; right: 14px; display: flex; align-items: center; gap: 6px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 3px 4px 3px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / .35); }
+.htfind[hidden] { display: none; }
+.htfind input { background: transparent; border: 0; outline: none; color: var(--text); width: 160px; font: var(--fs) var(--ui-font); -webkit-user-select: text; user-select: text; }
+.htfind span { color: var(--faint); font-size: var(--fs-small); min-width: 46px; text-align: right; }
+.htfind .sb { width: 22px; height: 22px; }
+.htask { position: absolute; z-index: 25; left: 50%; top: 14px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; box-shadow: 0 14px 40px rgb(0 0 0 / .45); width: min(420px, 90%); }
+.htask p { margin-bottom: 6px; }
+.htask pre { font: var(--fs-mono) var(--mono-font); color: var(--muted); max-height: 90px; overflow: hidden; white-space: pre-wrap; word-break: break-all; margin-bottom: 10px; }
+.htask .acts { display: flex; justify-content: flex-end; gap: 8px; }
+.htask .btn { height: 26px; padding: 0 12px; }
+.statusbar .httoggle { display: inline-flex; align-items: center; gap: 5px; }
+.statusbar .httoggle svg { width: 13px; height: 13px; }
+.statusbar .httoggle kbd { font: 500 var(--fs-small) var(--ui-font); color: var(--faint); }
+.statusbar .httoggle.on { color: var(--text); }
+#strip-term svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; width: 17px; height: 17px; }
 </style>
+<style>/*XTERM_CSS*/</style>
 </head>
 <body data-vm="stopped">
 
@@ -1990,6 +2091,8 @@ body.beat { --beat: ring 1.6s ease-out; }
 <div id="ctxcard" class="updcard" aria-live="polite" hidden></div>
 
 <script>/*ICONS*/</script>
+<!-- The built-in terminal's emulator: xterm.js and its add-ons (xterm/, spliced in by assemble.rs). -->
+<script>/*XTERM_JS*/</script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -2206,6 +2309,7 @@ function applyPrefs() {
   r.setProperty("--blue-hover", `color-mix(in srgb, ${accent} 88%, black)`);
   r.setProperty("--blue-active", `color-mix(in srgb, ${accent} 78%, black)`);
   r.setProperty("--blue-light", `color-mix(in srgb, ${accent} 60%, white)`);
+  window.htApply?.();
 }
 /* A right-click gets no browser menu (Reload, Back, Inspect): this is an app,
    not a web page. Text fields and selected text keep theirs, for Copy and Paste. */
@@ -4384,6 +4488,7 @@ function renderStatus() {
     usageItem(),
     updateChip(),
     pullItem(),
+    htStatusItem(),
     `<span class="grow"></span>`,
     shareOn() ? shStatusItem() : "",
     `<span class="item"><i class="dot ${esc(vshown)}"></i>${esc(vmText)}</span>`,
@@ -5765,7 +5870,10 @@ window.kiri = {
         if (ui.view === "images") render();
         break;
       case "removed": if (!batchHas("images", e.name)) removedToast(e); break;
-      case "textsize": stepTextSize(e.step); break;
+      // ⌘+ / ⌘− / ⌘0 size the terminal's text while it has the focus.
+      case "textsize": if (htHasFocus()) htStep(e.step); else stepTextSize(e.step); break;
+      case "term": htOn(e); break;
+      case "closekey": htCloseKey(); break;
       case "enginerestarted": engineToast(e); break;
       case "view": if (empty[e.view] || e.view === "settings") show(e.view); break;
       case "prefs": Object.assign(prefs, e.prefs || {}); prefsIn = true; applyPrefs(); render(); paintEngine(); renderStatus(); break;
@@ -5864,7 +5972,7 @@ window.kiri = {
       case "exec": if (ui.detail?.id === e.id) finishExec(e); break;
       case "files": if (ui.detail?.name === e.name) { Object.assign(ui.detail.files, { path: e.path, entries: e.entries, error: e.error, loading: false }); render(); } break;
       case "preview": if (ui.detail?.name === e.name && ui.detail.files.selected === e.path) { ui.detail.files.preview = e; render(); } break;
-      case "fonts": fontLists.families = e.families || []; fontLists.mono = e.mono || []; if (ui.view === "settings") render(); break;
+      case "fonts": fontLists.families = e.families || []; fontLists.mono = e.mono || []; if (ui.view === "settings") render(); if (!htQ(".htpop").hidden) htFontMenu(); break;
       case "about": about = e; if (ui.view === "settings") render(); break;
       case "k8s": case "k8sop": case "k8slogs": case "k8slogs-end": k8sOn(e); break;
     }
@@ -5977,6 +6085,7 @@ $("impstrip").addEventListener("click", (ev) => {
   else if (ev.target.closest("[data-impdismiss]")) dismissImportStrip();
 });
 $("statusbar").addEventListener("click", (ev) => {
+  if (ev.target.closest("[data-htterm]")) return htToggle();
   if (ev.target.closest("[data-shstatus]")) return $("sh-modal") ? shCard(null) : shCard("list");
   if (ev.target.closest("[data-ctxswitch]")) return ctxDialog();
   const el = ev.target.closest("[data-upd], [data-status-go], [data-open-site]");
@@ -8509,6 +8618,595 @@ function registriesPane() {
     <p class="muted">Signed in to a registry, Kiri pulls its private images, and docker uses the same sign-in.</p>
     ${rows}${form}</div>`;
 }
+
+/* --- The built-in terminal -----------------------------------------------------------
+   A shell on this computer in a panel under whatever page is open, like the
+   F4 terminal in Dolphin or VS Code's panel: tabs, each with its own shell,
+   split right and down, find, its own text size. ui/term.rs (Mac, Linux) and
+   kiri-win's term.rs (Windows) run the shells on a real terminal; xterm.js
+   draws them. The shells keep running while the panel is hidden. */
+const HT_KEYS = WIN
+  ? { toggle: "Ctrl+`", zin: "Ctrl+=", zout: "Ctrl+−", z0: "Ctrl+0", newtab: "Ctrl+Shift+T", close: "Ctrl+Shift+W", sr: "Alt+Shift+=", sd: "Alt+Shift+−", zoom: "Ctrl+Shift+Z", find: "Ctrl+Shift+F", mod: "Ctrl" }
+  : LINUX
+  ? { toggle: "F4", zin: "Ctrl+=", zout: "Ctrl+−", z0: "Ctrl+0", newtab: "Ctrl+Shift+T", close: "Ctrl+Shift+W", sr: "Ctrl+Shift+(", sd: "Ctrl+Shift+)", zoom: "Ctrl+Shift+E", find: "Ctrl+Shift+F", mod: "Ctrl" }
+  : { toggle: "⌃`", zin: "⌘=", zout: "⌘−", z0: "⌘0", newtab: "⌘T", close: "⌘W", sr: "⌘D", sd: "⌘⇧D", zoom: "⌘⇧↵", find: "⌘F", mod: "⌘" };
+const HT_SVG = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+const HT_ICON = {
+  term: HT_SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/>'),
+  plus: HT_SVG('<path d="M12 5v14M5 12h14"/>'),
+  sr: HT_SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>'),
+  sd: HT_SVG('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 12h18"/>'),
+  find: HT_SVG('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'),
+  aa: HT_SVG('<path d="M3 18l5-12 5 12M4.8 14h6.4M15 18l3.5-8 3.5 8M16 15.5h5"/>'),
+  max: HT_SVG('<path d="M5 10V5h5M19 14v5h-5M5 5l6 6M19 19l-6-6"/>'),
+  restore: HT_SVG('<path d="M10 5v5H5M14 19v-5h5M4 4l6 6M20 20l-6-6"/>'),
+  hide: HT_SVG('<path d="M6 9l6 6 6-6"/>'),
+  up: HT_SVG('<path d="M6 15l6-6 6 6"/>'),
+  down: HT_SVG('<path d="M6 9l6 6 6-6"/>'),
+  x: HT_SVG('<path d="M7 7l10 10M17 7L7 17"/>'),
+  pin: HT_SVG('<path d="M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5zM12 14v6"/>'),
+};
+const HT_FS = { min: 9, max: 24, def: 12 };
+var ht = { open: false, max: false, zoom: false, tabs: [], at: 0, focus: null, shells: null, def: "", panes: new Map(), n: 0, wantTab: false, findQ: "" };
+
+const htEl = document.createElement("section");
+htEl.className = "htdrawer";
+htEl.id = "htdrawer";
+htEl.hidden = true;
+htEl.setAttribute("aria-label", "Terminal");
+htEl.innerHTML = `<div class="htgrip" title="Drag to resize"></div>
+  <div class="hthead">
+    <div class="httabs" role="tablist"></div>
+    <div class="htwrap"><button class="sb" data-ht="menu" title="New tab (${HT_KEYS.newtab})" aria-label="New tab">${HT_ICON.plus}</button><div class="htmenu" hidden></div></div>
+    <div class="grow"></div>
+    <button class="sb" data-ht="sr" title="Split right (${HT_KEYS.sr})" aria-label="Split right">${HT_ICON.sr}</button>
+    <button class="sb" data-ht="sd" title="Split down (${HT_KEYS.sd})" aria-label="Split down">${HT_ICON.sd}</button>
+    <span class="sep"></span>
+    <button class="sb" data-ht="find" title="Find (${HT_KEYS.find})" aria-label="Find">${HT_ICON.find}</button>
+    <div class="htwrap"><button class="sb" data-ht="aa" title="Text size" aria-label="Text size">${HT_ICON.aa}</button>
+      <div class="htpop" hidden>
+        <div class="lbl">Text size <b class="htfsv"></b></div>
+        <div class="row"><button class="st" data-ht="zout" aria-label="Smaller">−</button><input type="range" min="${HT_FS.min}" max="${HT_FS.max}" step="1" aria-label="Text size"><button class="st" data-ht="zin" aria-label="Bigger">+</button></div>
+        <hr>
+        <div class="lbl">Font</div>
+        <select class="htfont" aria-label="Font"></select>
+        <div class="keys">${esc(HT_KEYS.zout)} smaller · ${esc(HT_KEYS.zin)} bigger · ${esc(HT_KEYS.z0)} reset<br>or hold ${esc(HT_KEYS.mod)} and scroll</div>
+      </div></div>
+    <button class="sb" data-ht="max" title="Maximise" aria-label="Maximise">${HT_ICON.max}</button>
+    <button class="sb" data-ht="hide" title="Hide (${HT_KEYS.toggle})" aria-label="Hide">${HT_ICON.hide}</button>
+  </div>
+  <div class="htbody"><div class="htfind" hidden><input placeholder="Find" spellcheck="false" aria-label="Find in the terminal"><span class="htcount"></span><button class="sb" data-ht="prev" aria-label="Previous match">${HT_ICON.up}</button><button class="sb" data-ht="next" aria-label="Next match">${HT_ICON.down}</button><button class="sb" data-ht="findx" aria-label="Close find">${HT_ICON.x}</button></div></div>
+  <div class="httoast" aria-live="polite"></div>
+  <div class="htctx" role="menu" hidden></div>`;
+$("impstrip").after(htEl);
+const htQ = (s) => htEl.querySelector(s);
+const htBody = htQ(".htbody");
+
+/* The strip's button, next to Settings. */
+const htStripBtn = Object.assign(document.createElement("button"), { className: "sb", id: "strip-term", title: `Terminal (${HT_KEYS.toggle})`, innerHTML: HT_ICON.term });
+htStripBtn.setAttribute("aria-label", "Terminal");
+htStripBtn.setAttribute("aria-pressed", "false");
+$("strip-settings").before(htStripBtn);
+htStripBtn.addEventListener("click", () => htToggle());
+
+const htFs = () => Math.max(HT_FS.min, Math.min(HT_FS.max, Number(prefs.termFs) || HT_FS.def));
+const htFont = () => prefs.termFont || getComputedStyle(document.documentElement).getPropertyValue("--mono-font").trim() || "monospace";
+function htTheme() {
+  const css = getComputedStyle(document.documentElement), v = (n) => css.getPropertyValue(n).trim();
+  const dark = darkNow();
+  return { background: v("--term-bg") || (dark ? "#0B0F13" : "#FFFFFF"), foreground: v("--term-fg") || (dark ? "#D7DCE1" : "#1F2328"),
+    cursor: dark ? "#D7DCE1" : "#1F2328", cursorAccent: dark ? "#0B0F13" : "#FFFFFF",
+    selectionBackground: dark ? "rgba(110,168,254,.35)" : "rgba(13,110,253,.22)" };
+}
+let htToastT;
+function htToast(text) {
+  const t = htQ(".httoast");
+  t.textContent = text;
+  t.classList.add("show");
+  clearTimeout(htToastT);
+  htToastT = setTimeout(() => t.classList.remove("show"), 900);
+}
+
+/* Bytes to and from the app go as base64 (termwire.rs). */
+function htB64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+const htUnB64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+const htLeaves = (nd, out = []) => (nd.t === "pane" ? out.push(nd.id) : (htLeaves(nd.a, out), htLeaves(nd.b, out)), out);
+const htTab = () => ht.tabs[ht.at];
+const htPane = (id = ht.focus) => ht.panes.get(id);
+const htShellLabel = (id) => ht.shells?.find((s) => s.id === id)?.label || id.split(/[\\/]/).pop();
+
+/* A pane: its element, kept across re-renders, and its terminal. */
+function htNewPane(shell) {
+  const id = `t${++ht.n}`;
+  const el = document.createElement("div");
+  el.className = "htpane";
+  el.dataset.id = id;
+  el.innerHTML = `<div class="htpt"><span class="htname"></span><button class="htpx" data-htpx title="Close (${esc(HT_KEYS.close)})" aria-label="Close pane">${HT_ICON.x}</button></div><div class="htx"></div>`;
+  const p = { id, shell, el, term: null, fit: null, search: null, title: "", exited: false, opened: false };
+  ht.panes.set(id, p);
+  return p;
+}
+function htStart(p) {
+  if (p.term || typeof Terminal !== "function") return;
+  const term = new Terminal({ fontFamily: htFont(), fontSize: htFs(), theme: htTheme(), cursorBlink: true, scrollback: 10000, allowProposedApi: true,
+    macOptionIsMeta: false, rightClickSelectsWord: false, drawBoldTextInBrightColors: true });
+  p.term = term;
+  p.fit = new FitAddon.FitAddon();
+  p.search = new SearchAddon.SearchAddon();
+  term.loadAddon(p.fit);
+  term.loadAddon(p.search);
+  // Links in the output open in the browser; the app only opens http(s).
+  term.loadAddon(new WebLinksAddon.WebLinksAddon((ev, uri) => { ev.preventDefault?.(); send("term", { name: "link", value: uri }); }));
+  term.open(p.el.querySelector(".htx"));
+  term.attachCustomKeyEventHandler((ev) => htKey(ev, p));
+  term.onData((d) => !p.exited && send("term", { name: "input", id: p.id, value: htB64(d) }));
+  term.onBinary((d) => !p.exited && send("term", { name: "input", id: p.id, value: btoa(d) }));
+  term.onResize(({ cols, rows }) => p.opened && send("term", { name: "resize", id: p.id, value: { cols, rows } }));
+  term.onTitleChange((t) => { p.title = t; htTitles(); });
+  term.textarea?.addEventListener("focus", () => htSetFocus(p.id, false));
+  p.search.onDidChangeResults?.(({ resultIndex, resultCount }) => { if (p.id === ht.focus) htQ(".htcount").textContent = resultCount ? `${resultIndex + 1} of ${resultCount}` : ht.findQ ? "No results" : ""; });
+  htFitOne(p);
+  send("term", { name: "open", id: p.id, value: { shell: p.shell, cols: term.cols, rows: term.rows } });
+  p.opened = true;
+}
+function htFitOne(p) {
+  if (!p.term || !p.el.isConnected || !p.el.offsetWidth) return;
+  try { p.fit.fit(); } catch { /* not laid out yet */ }
+}
+function htFitAll() { for (const id of htTab() ? htLeaves(htTab().tree) : []) htFitOne(htPane(id)); }
+let htFitQueued = false;
+function htQueueFit() {
+  if (htFitQueued) return;
+  htFitQueued = true;
+  requestAnimationFrame(() => { htFitQueued = false; htFitAll(); });
+}
+new ResizeObserver(htQueueFit).observe(htBody);
+
+function htTitles() {
+  for (const id of htTab() ? htLeaves(htTab().tree) : []) {
+    const p = htPane(id);
+    p.el.querySelector(".htname").textContent = p.title || htShellLabel(p.shell);
+  }
+}
+function htRenderTabs() {
+  setHTML(htQ(".httabs"), ht.tabs.map((t, i) => {
+    const p = htPane(htLeaves(t.tree)[0]);
+    return `<button class="httab${i === ht.at ? " on" : ""}" role="tab" aria-selected="${i === ht.at}" data-httab="${i}" title="${esc(p?.title || "")}">${esc(htShellLabel(t.shell))}${t.pinned ? `<span class="pin" title="Pinned: right-click to unpin" aria-label="Pinned">${HT_ICON.pin}</span>` : `<span class="x" data-htx="${i}" title="Close (${esc(HT_KEYS.close)})" aria-label="Close tab">${HT_ICON.x}</span>`}</button>`;
+  }).join(""));
+}
+function htRender() {
+  htRenderTabs();
+  for (const el of [...htBody.children]) if (!el.classList.contains("htfind")) el.remove();
+  const t = htTab();
+  if (!t) return;
+  const ids = htLeaves(t.tree);
+  if (!ids.includes(ht.focus)) ht.focus = ids[ids.length - 1];
+  const node = (nd) => {
+    if (nd.t === "pane") {
+      const p = htPane(nd.id);
+      p.el.classList.toggle("focus", nd.id === ht.focus);
+      return p.el;
+    }
+    const s = document.createElement("div");
+    s.className = `htsplit ${nd.d}`;
+    const cell = (child, r) => { const c = document.createElement("div"); c.className = "htcell"; c.style.flex = `${r} 1 0`; c.append(node(child)); return c; };
+    const div = document.createElement("div");
+    div.className = "htdiv";
+    div.addEventListener("mousedown", (ev) => htDragDivider(ev, nd, div));
+    s.append(cell(nd.a, nd.r), div, cell(nd.b, 1 - nd.r));
+    return s;
+  };
+  htBody.append(node(t.tree));
+  htBody.classList.toggle("many", ids.length > 1);
+  htBody.classList.toggle("zoomed", ht.zoom && ids.length > 1);
+  htTitles();
+  for (const id of ids) htStart(htPane(id));
+  htFitAll();
+}
+function htDragDivider(ev, nd, div) {
+  ev.preventDefault();
+  div.classList.add("drag");
+  const box = div.parentElement.getBoundingClientRect();
+  const move = (e) => {
+    nd.r = Math.max(0.15, Math.min(0.85, nd.d === "h" ? (e.clientX - box.left) / box.width : (e.clientY - box.top) / box.height));
+    div.previousElementSibling.style.flex = `${nd.r} 1 0`;
+    div.nextElementSibling.style.flex = `${1 - nd.r} 1 0`;
+  };
+  const up = () => { div.classList.remove("drag"); removeEventListener("mousemove", move); removeEventListener("mouseup", up); htFitAll(); htPane()?.term?.focus(); };
+  addEventListener("mousemove", move);
+  addEventListener("mouseup", up);
+}
+function htSetFocus(id, focusTerm = true) {
+  if (!htPane(id)) return;
+  ht.focus = id;
+  htBody.querySelectorAll(".htpane").forEach((el) => el.classList.toggle("focus", el.dataset.id === id));
+  if (focusTerm) htPane(id).term?.focus();
+}
+const htHasFocus = () => !htEl.hidden && htEl.contains(document.activeElement);
+
+function htShow(open) {
+  ht.open = open;
+  htEl.hidden = !open;
+  htStripBtn.setAttribute("aria-pressed", String(open));
+  renderStatus();
+  if (!open) return;
+  if (!ht.tabs.length) htNewTab();
+  else { htRender(); requestAnimationFrame(() => htPane()?.term?.focus()); }
+}
+function htToggle() {
+  if (ht.open && !htHasFocus() && htPane()) return htPane().term?.focus();
+  htShow(!ht.open);
+  if (!ht.open) document.activeElement?.blur?.();
+}
+function htNewTab(shell) {
+  if (!ht.shells) { ht.wantTab = shell || true; return send("term", { name: "shells" }); }
+  const p = htNewPane(shell || ht.def);
+  ht.tabs.push({ shell: p.shell, tree: { t: "pane", id: p.id } });
+  ht.at = ht.tabs.length - 1;
+  ht.focus = p.id;
+  ht.zoom = false;
+  if (!ht.open) { ht.open = true; htEl.hidden = false; htStripBtn.setAttribute("aria-pressed", "true"); renderStatus(); }
+  htRender();
+  requestAnimationFrame(() => p.term?.focus());
+}
+function htReplace(tree, id, fn) {
+  if (tree.t === "pane") return tree.id === id ? fn(tree) : tree;
+  return { ...tree, a: htReplace(tree.a, id, fn), b: htReplace(tree.b, id, fn) };
+}
+function htSplit(d) {
+  const t = htTab();
+  if (!t) return htNewTab();
+  const p = htNewPane(htPane()?.shell || t.shell);
+  t.tree = htReplace(t.tree, ht.focus, (leaf) => ({ t: "split", d, r: 0.5, a: leaf, b: { t: "pane", id: p.id } }));
+  ht.focus = p.id;
+  ht.zoom = false;
+  htRender();
+  requestAnimationFrame(() => p.term?.focus());
+}
+/* Ends a pane's shell and takes it out of its tab; the last pane closes the tab. */
+function htDrop(id, hang = true) {
+  const p = htPane(id);
+  if (!p) return;
+  // A pinned tab's last pane is closed only by unpinning first (or its shell ending).
+  const owner = ht.tabs.find((t) => htLeaves(t.tree).includes(id));
+  if (hang && owner?.pinned && owner.tree.t === "pane") return htToast("Pinned: unpin the tab to close it");
+  if (hang && !p.exited) send("term", { name: "close", id });
+  p.term?.dispose();
+  ht.panes.delete(id);
+  const ti = ht.tabs.findIndex((t) => htLeaves(t.tree).includes(id));
+  if (ti < 0) return;
+  const t = ht.tabs[ti];
+  if (t.tree.t === "pane") {
+    ht.tabs.splice(ti, 1);
+    if (ht.at >= ti) ht.at = Math.max(0, ht.at - 1);
+  } else {
+    const rm = (nd) => (nd.t === "pane" ? nd : nd.a.t === "pane" && nd.a.id === id ? nd.b : nd.b.t === "pane" && nd.b.id === id ? nd.a : { ...nd, a: rm(nd.a), b: rm(nd.b) });
+    t.tree = rm(t.tree);
+  }
+  if (ht.focus === id) ht.focus = null;
+  if (!ht.tabs.length) { ht.zoom = false; htRender(); htShow(false); return; }
+  htRender();
+  if (ht.open) requestAnimationFrame(() => htPane()?.term?.focus());
+}
+function htCloseTab(i) {
+  const t = ht.tabs[i];
+  if (!t) return;
+  ht.at = i;
+  for (const id of htLeaves(t.tree)) htDrop(id);
+}
+function htMove(dir) {
+  const ids = htTab() ? htLeaves(htTab().tree) : [];
+  const from = htPane()?.el.getBoundingClientRect();
+  if (!from || ids.length < 2) return;
+  const cx = from.left + from.width / 2, cy = from.top + from.height / 2;
+  let best = null, bestD = Infinity;
+  for (const id of ids) {
+    if (id === ht.focus) continue;
+    const r = htPane(id).el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const ok = { left: x < cx - 1, right: x > cx + 1, up: y < cy - 1, down: y > cy + 1 }[dir];
+    const d = Math.hypot(x - cx, y - cy);
+    if (ok && d < bestD) { best = id; bestD = d; }
+  }
+  if (best) htSetFocus(best);
+}
+function htSetFs(v, quiet) {
+  const fs = Math.max(HT_FS.min, Math.min(HT_FS.max, v));
+  if (fs !== htFs()) { prefs.termFs = fs; send("setpref", { name: "termFs", value: fs }); }
+  for (const p of ht.panes.values()) if (p.term) p.term.options.fontSize = fs;
+  htQ("input[type=range]").value = fs;
+  htQ(".htfsv").textContent = `${fs} px`;
+  htQueueFit();
+  if (!quiet) htToast(`Text size ${fs} px`);
+}
+const htStep = (step) => htSetFs(step === 0 ? HT_FS.def : htFs() + step);
+/* The window's text size is CSS zoom on the body; xterm measures in real
+   pixels, so its element undoes the zoom (and has its own size instead). */
+function htApply() {
+  htEl.style.setProperty("--ht-h", `${Math.max(120, Number(prefs.termH) || 300)}px`);
+  htEl.style.setProperty("--ht-unzoom", String(1 / (Number(prefs.scale) || 1)));
+  const theme = htTheme(), font = htFont();
+  for (const p of ht.panes.values()) if (p.term) { p.term.options.theme = theme; p.term.options.fontFamily = font; }
+  htQueueFit();
+}
+window.htApply = htApply;
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", htApply);
+
+function htMax(on = !ht.max) {
+  ht.max = on;
+  htEl.classList.toggle("max", on);
+  const b = htQ('[data-ht="max"]');
+  b.innerHTML = on ? HT_ICON.restore : HT_ICON.max;
+  b.title = on ? "Restore" : "Maximise";
+  b.setAttribute("aria-label", b.title);
+  htQueueFit();
+}
+function htFind(open = true) {
+  const f = htQ(".htfind");
+  f.hidden = !open;
+  if (open) { const i = f.querySelector("input"); i.focus(); i.select(); }
+  else { htPane()?.search?.clearDecorations(); htQ(".htcount").textContent = ""; htPane()?.term?.focus(); }
+}
+const HT_DECO = { matchBackground: "#6EA8FE55", activeMatchBackground: "#FFC23D", matchOverviewRuler: "#6EA8FE", activeMatchColorOverviewRuler: "#FFC23D" };
+function htFindGo(back) {
+  const s = htPane()?.search, q = htQ(".htfind input").value;
+  ht.findQ = q;
+  if (!s) return;
+  if (!q) { s.clearDecorations(); htQ(".htcount").textContent = ""; return; }
+  const found = back ? s.findPrevious(q, { decorations: HT_DECO }) : s.findNext(q, { decorations: HT_DECO, incremental: false });
+  if (!found) htQ(".htcount").textContent = "No results";
+}
+htQ(".htfind input").addEventListener("input", () => {
+  const s = htPane()?.search, q = htQ(".htfind input").value;
+  ht.findQ = q;
+  if (!s) return;
+  if (!q) { s.clearDecorations(); htQ(".htcount").textContent = ""; return; }
+  if (!s.findNext(q, { decorations: HT_DECO, incremental: true })) htQ(".htcount").textContent = "No results";
+});
+htQ(".htfind input").addEventListener("keydown", (ev) => {
+  ev.stopPropagation();
+  if (ev.key === "Enter") { ev.preventDefault(); htFindGo(ev.shiftKey); }
+  else if (ev.key === "Escape") { ev.preventDefault(); htFind(false); }
+});
+
+/* Pasting more than one line runs each line as a command: ask first. */
+function htPaste(id, text) {
+  const p = htPane(id);
+  if (!p?.term || !text || p.exited) return;
+  const lines = text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n").length;
+  if (lines < 2) return p.term.paste(text);
+  p.el.querySelector(".htask")?.remove();
+  const ask = document.createElement("div");
+  ask.className = "htask";
+  ask.setAttribute("role", "alertdialog");
+  ask.innerHTML = `<p>Paste ${lines} lines? Each line runs as a command.</p><pre>${esc(text.slice(0, 400))}</pre><div class="acts"><button class="btn" data-htask="no">Cancel</button><button class="btn primary" data-htask="yes">Paste</button></div>`;
+  p.el.append(ask);
+  const done = (yes) => { ask.remove(); if (yes) p.term.paste(text); p.term.focus(); };
+  ask.addEventListener("click", (ev) => { const b = ev.target.closest("[data-htask]"); if (b) done(b.dataset.htask === "yes"); });
+  ask.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Escape") done(false); else if (ev.key === "Enter") done(true); });
+  ask.querySelector('[data-htask="yes"]').focus();
+}
+function htCopy(p) {
+  const text = p.term?.getSelection();
+  if (!text) return false;
+  send("term", { name: "copy", value: text });
+  htToast("Copied");
+  return true;
+}
+/* The browser's own paste (a menu, or a key the WebView handles itself)
+   goes through the same check. */
+htEl.addEventListener("paste", (ev) => {
+  if (!ev.target.closest?.(".htx")) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const id = ev.target.closest(".htpane")?.dataset.id;
+  htPaste(id, ev.clipboardData?.getData("text/plain") || "");
+}, true);
+
+/* The panel's keys (HT_KEYS), per system. */
+function htAction(ev) {
+  const k = ev.key, low = k.length === 1 ? k.toLowerCase() : k;
+  const mod = WIN || LINUX ? ev.ctrlKey && !ev.metaKey : ev.metaKey && !ev.ctrlKey;
+  const arrow = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" }[k];
+  if (WIN || LINUX) {
+    if (ev.ctrlKey && ev.shiftKey && !ev.altKey) {
+      const a = { t: "newtab", w: "close", f: "find", c: "copy", v: "paste", [LINUX ? "e" : "z"]: "zoom" }[low];
+      if (a) return a;
+      if (LINUX && (k === "(" || k === "9")) return "sr";
+      if (LINUX && (k === ")" || k === "0")) return "sd";
+    }
+    if (WIN && ev.altKey && ev.shiftKey && !ev.ctrlKey && (k === "+" || k === "=" || ev.code === "Equal")) return "sr";
+    if (WIN && ev.altKey && ev.shiftKey && !ev.ctrlKey && (k === "_" || k === "-" || ev.code === "Minus")) return "sd";
+    if (ev.altKey && !ev.ctrlKey && !ev.shiftKey && arrow) return `move-${arrow}`;
+    if (WIN && ev.ctrlKey && !ev.shiftKey && !ev.altKey && low === "v") return "paste";
+    if (WIN && ev.ctrlKey && !ev.shiftKey && !ev.altKey && low === "c") return "copysel";
+  } else {
+    if (mod && !ev.altKey && !ev.shiftKey) {
+      const a = { t: "newtab", w: "close", d: "sr", f: "find", c: "copy", v: "paste" }[low];
+      if (a) return a;
+    }
+    if (mod && ev.shiftKey && !ev.altKey && low === "d") return "sd";
+    if (mod && ev.shiftKey && k === "Enter") return "zoom";
+    if (mod && ev.altKey && arrow) return `move-${arrow}`;
+  }
+  if (mod && !ev.altKey && (k === "=" || k === "+")) return "zin";
+  if (mod && !ev.altKey && !ev.shiftKey && k === "-") return "zout";
+  if (mod && !ev.altKey && !ev.shiftKey && k === "0") return "z0";
+  return null;
+}
+const htToggleKey = (ev) => (ev.ctrlKey && !ev.metaKey && !ev.altKey && (ev.code === "Backquote" || ev.key === "`")) || (LINUX && ev.key === "F4" && !ev.ctrlKey && !ev.altKey && !ev.shiftKey && !ev.metaKey);
+function htKey(ev, p) {
+  if (ev.type !== "keydown") return true;
+  if (htToggleKey(ev)) { ev.preventDefault(); ev.stopPropagation(); htToggle(); return false; }
+  const a = htAction(ev);
+  if (!a) return true;
+  // Ctrl+C copies only with a selection; otherwise it is the shell's interrupt.
+  if (a === "copysel" && !p.term.hasSelection()) return true;
+  ev.preventDefault();
+  ev.stopPropagation();
+  htDo(a, p);
+  return false;
+}
+function htDo(a, p = htPane()) {
+  if (a === "copy" || a === "copysel") { if (p) htCopy(p); }
+  else if (a === "paste") { if (p) send("term", { name: "paste", id: p.id }); }
+  else if (a === "newtab") htNewTab();
+  else if (a === "close") { if (p) htDrop(p.id); }
+  else if (a === "sr") htSplit("h");
+  else if (a === "sd") htSplit("v");
+  else if (a === "find") htFind(true);
+  else if (a === "zoom") { if (htTab() && htLeaves(htTab().tree).length > 1) { ht.zoom = !ht.zoom; htRender(); htToast(ht.zoom ? "Pane zoomed" : "Pane restored"); requestAnimationFrame(() => htPane()?.term?.focus()); } }
+  else if (a === "zin") htStep(1);
+  else if (a === "zout") htStep(-1);
+  else if (a === "z0") htStep(0);
+  else if (a.startsWith("move-")) htMove(a.slice(5));
+}
+/* The toggle works from anywhere in the window. */
+document.addEventListener("keydown", (ev) => {
+  if (htToggleKey(ev)) { ev.preventDefault(); htToggle(); }
+});
+htBody.addEventListener("wheel", (ev) => {
+  if (!(WIN || LINUX ? ev.ctrlKey : ev.metaKey || ev.ctrlKey)) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  htStep(ev.deltaY < 0 ? 1 : -1);
+}, { passive: false, capture: true });
+
+/* Right-click a tab: pin it (first in the row, no ×), or close it. */
+function htPin(i, on) {
+  const t = ht.tabs[i];
+  if (!t) return;
+  const cur = htTab();
+  t.pinned = on;
+  ht.tabs.splice(i, 1);
+  const lastPinned = ht.tabs.reduce((n, x, j) => (x.pinned ? j + 1 : n), 0);
+  ht.tabs.splice(lastPinned, 0, t);
+  ht.at = ht.tabs.indexOf(cur);
+  htRender();
+  htToast(on ? "Tab pinned" : "Tab unpinned");
+}
+function htCtx(ev, i) {
+  const m = htQ(".htctx"), t = ht.tabs[i], box = htEl.getBoundingClientRect(), zoom = Number(prefs.scale) || 1;
+  setHTML(m, `<button class="mi" role="menuitem" data-htpin="${i}">${t.pinned ? "Unpin tab" : "Pin tab"}</button><button class="mi" role="menuitem" data-htclose="${i}"${t.pinned ? " disabled" : ""}>Close tab</button>`);
+  m.hidden = false;
+  m.style.left = `${Math.min(ev.clientX - box.left, box.width - 180) / zoom}px`;
+  m.style.top = `${(ev.clientY - box.top) / zoom}px`;
+}
+htQ(".httabs").addEventListener("contextmenu", (ev) => {
+  const tab = ev.target.closest("[data-httab]");
+  if (!tab) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  htCtx(ev, Number(tab.dataset.httab));
+});
+htQ(".htctx").addEventListener("click", (ev) => {
+  const pin = ev.target.closest("[data-htpin]"), close = ev.target.closest("[data-htclose]");
+  htQ(".htctx").hidden = true;
+  if (pin) htPin(Number(pin.dataset.htpin), !ht.tabs[Number(pin.dataset.htpin)].pinned);
+  else if (close && !close.disabled) htCloseTab(Number(close.dataset.htclose));
+});
+function htMenu() {
+  const m = htQ(".htmenu"), list = ht.shells || [];
+  const item = (s, i) => `<button class="mi" data-htshell="${esc(s.id)}">${esc(s.label)}${i === 0 ? `<span class="k">${esc(HT_KEYS.newtab)}</span>` : ""}</button>`;
+  const def = list.find((s) => s.id === ht.def);
+  const rest = list.filter((s) => s !== def);
+  const plain = rest.filter((s) => !s.group), groups = [...new Set(rest.filter((s) => s.group).map((s) => s.group))];
+  setHTML(m, [def ? item(def, 0) : "", ...plain.map((s) => item(s, 1)),
+    ...groups.map((g) => `<hr><div class="ml">${esc(g)}</div>${rest.filter((s) => s.group === g).map((s) => item(s, 1)).join("")}`)].join("") || `<div class="ml">Looking for shells…</div>`);
+}
+function htFontMenu() {
+  const sel = htQ(".htfont"), names = fontLists.mono.length ? fontLists.mono : [];
+  const cur = prefs.termFont || "";
+  setHTML(sel, `<option value="">Same as the window (${esc(prefs.mono || "System Mono")})</option>` + names.map((n) => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${esc(n)}</option>`).join(""));
+  sel.value = cur;
+}
+htEl.addEventListener("click", (ev) => {
+  const t = ev.target;
+  // A split pane's own ×, in its title bar.
+  const px = t.closest("[data-htpx]");
+  if (px) { ev.stopPropagation(); return htDrop(px.closest(".htpane").dataset.id); }
+  const x = t.closest("[data-htx]");
+  if (x) { ev.stopPropagation(); return htCloseTab(Number(x.dataset.htx)); }
+  const tab = t.closest("[data-httab]");
+  if (tab) { ht.at = Number(tab.dataset.httab); ht.focus = null; ht.zoom = false; htRender(); requestAnimationFrame(() => htPane()?.term?.focus()); return; }
+  const sh = t.closest("[data-htshell]");
+  if (sh) { htQ(".htmenu").hidden = true; return htNewTab(sh.dataset.htshell); }
+  const b = t.closest("[data-ht]");
+  if (!t.closest(".htpop, .htmenu") && b?.dataset.ht !== "menu" && b?.dataset.ht !== "aa") htEl.querySelectorAll(".htpop, .htmenu").forEach((m) => (m.hidden = true));
+  if (b) {
+    const k = b.dataset.ht;
+    if (k === "menu") { const m = htQ(".htmenu"); htQ(".htpop").hidden = true; m.hidden = !m.hidden; if (!m.hidden) { htMenu(); if (!ht.shells) send("term", { name: "shells" }); } }
+    else if (k === "aa") { const pop = htQ(".htpop"); htQ(".htmenu").hidden = true; pop.hidden = !pop.hidden; if (!pop.hidden) { htSetFs(htFs(), true); htFontMenu(); if (!fontLists.mono.length) send("fonts"); } }
+    else if (k === "max") htMax();
+    else if (k === "hide") htShow(false);
+    else if (k === "prev") htFindGo(true);
+    else if (k === "next") htFindGo(false);
+    else if (k === "findx") htFind(false);
+    else htDo(k);
+    return;
+  }
+  const pane = t.closest(".htpane");
+  if (pane && !t.closest(".htask")) htSetFocus(pane.dataset.id);
+});
+htQ("input[type=range]").addEventListener("input", (ev) => htSetFs(Number(ev.target.value)));
+htQ(".htfont").addEventListener("change", (ev) => { prefs.termFont = ev.target.value; send("setpref", { name: "termFont", value: ev.target.value }); htApply(); });
+document.addEventListener("mousedown", (ev) => {
+  if (!ev.target.closest?.(".htwrap")) htEl.querySelectorAll(".htpop, .htmenu").forEach((m) => (m.hidden = true));
+  if (!ev.target.closest?.(".htctx")) htQ(".htctx").hidden = true;
+});
+
+/* The grip on the top edge sets the panel's height. */
+htQ(".htgrip").addEventListener("mousedown", (ev) => {
+  ev.preventDefault();
+  // Mouse positions are the screen's; the panel's height is in the zoomed page's pixels.
+  const zoom = Number(prefs.scale) || 1, startY = ev.clientY, startH = Math.max(120, Number(prefs.termH) || 300);
+  const maxH = () => htEl.parentElement.getBoundingClientRect().height / zoom - 80;
+  let h = startH;
+  const move = (e) => { h = Math.round(Math.max(120, Math.min(maxH(), startH + (startY - e.clientY) / zoom))); htEl.style.setProperty("--ht-h", `${h}px`); };
+  const up = () => { removeEventListener("mousemove", move); removeEventListener("mouseup", up); prefs.termH = h; send("setpref", { name: "termH", value: h }); htFitAll(); htPane()?.term?.focus(); };
+  addEventListener("mousemove", move);
+  addEventListener("mouseup", up);
+});
+
+/* What the app says back (termwire.rs). */
+function htOn(e) {
+  if (e.ev === "shells") {
+    ht.shells = e.shells || [];
+    ht.def = e.default || ht.shells[0]?.id || "";
+    if (!htQ(".htmenu").hidden) htMenu();
+    if (ht.wantTab) { const want = ht.wantTab; ht.wantTab = false; htNewTab(want === true ? undefined : want); }
+    return;
+  }
+  const p = htPane(e.id);
+  if (!p?.term) return;
+  if (e.ev === "data") p.term.write(htUnB64(e.b64));
+  else if (e.ev === "paste") htPaste(e.id, e.text || "");
+  else if (e.ev === "exit") {
+    p.exited = true;
+    // A shell that ends by itself closes its pane, as other terminals do;
+    // one that couldn't start says why.
+    if (e.error) p.term.write(`\r\n\x1b[31mCouldn't start ${htShellLabel(p.shell)}: ${String(e.error).replace(/[\x00-\x1f]/g, " ")}\x1b[0m\r\n`);
+    else htDrop(p.id, false);
+  }
+}
+/* ⌘W on the Mac comes here first from the menu (mac.rs). */
+function htCloseKey() {
+  if (htHasFocus() && htPane()) htDrop(ht.focus);
+  else send("closewindow");
+}
+function htStatusItem() {
+  // renderStatus can run before this part of the script has.
+  if (!ht) return "";
+  return `<button class="item httoggle${ht.open ? " on" : ""}" data-htterm title="${ht.open ? "Hide" : "Show"} the terminal (${esc(HT_KEYS.toggle)})">${HT_ICON.term}<span>Terminal</span><kbd>${esc(HT_KEYS.toggle)}</kbd></button>`;
+}
+htApply();
+// Shells from before a reload have nothing on screen any more.
+send("term", { name: "closeall" });
 
 document.querySelectorAll("svg[data-ph]").forEach((el) => (el.innerHTML = `<path d="${PH[el.dataset.ph]}"/>`));
 render();

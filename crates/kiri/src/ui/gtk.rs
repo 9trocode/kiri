@@ -16,7 +16,7 @@ use gtk::prelude::*;
 use javascriptcore::ValueExt;
 use webkit2gtk::{SettingsExt, UserContentInjectedFrames, UserContentManager, UserContentManagerExt, UserScript, UserScriptInjectionTime, WebView, WebViewExt};
 
-use super::{Cmd, ICONS_JS, PAGE, engine, prefs};
+use super::{Cmd, PAGE, engine, prefs};
 
 thread_local! {
     /// The page and its window. Only ever touched on GTK's main thread.
@@ -76,7 +76,7 @@ pub fn run(autostart: bool, view: Option<String>) -> io::Result<()> {
     }
     // The page paints its own background: no white flash before it does.
     webview.set_background_color(&gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.0));
-    webview.load_html(&PAGE.replacen("/*ICONS*/", ICONS_JS, 1), None);
+    webview.load_html(&super::assemble::page(PAGE), None);
     window.add(&webview);
 
     set_appearance(prefs()["theme"].as_str().unwrap_or("system"));
@@ -168,6 +168,13 @@ pub(super) fn copy(text: &str) {
         clipboard.set_text(&text);
         // Kept after the window quits, where the desktop has a clipboard manager.
         clipboard.store();
+    });
+}
+
+/// The clipboard's text, handed to `done` once GTK has it.
+pub(super) fn paste(done: impl FnOnce(String) + Send + 'static) {
+    glib::MainContext::default().invoke(move || {
+        gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD).request_text(move |_, text| done(text.map(|t| t.to_string()).unwrap_or_default()));
     });
 }
 

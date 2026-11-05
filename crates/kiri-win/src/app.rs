@@ -57,9 +57,8 @@ pub fn in_setup() -> bool {
 }
 
 fn page_html() -> String {
-    if SETUP.load(Ordering::SeqCst) { SETUP_PAGE.to_owned() } else { PAGE.replacen("/*ICONS*/", ICONS_JS, 1) }
+    if SETUP.load(Ordering::SeqCst) { SETUP_PAGE.to_owned() } else { crate::assemble::page(PAGE) }
 }
-const ICONS_JS: &str = include_str!("../../kiri/src/ui/icons.js");
 /// Kiri's icon cropped to its artwork for Windows (brand/windows-icons.ps1),
 /// by size: the Mac's has Apple's margin and looks small in the taskbar.
 const ICONS: [(i32, &[u8]); 8] = [

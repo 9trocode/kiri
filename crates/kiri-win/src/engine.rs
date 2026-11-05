@@ -777,7 +777,7 @@ pub fn prefs() -> Value {
 }
 
 fn set_pref(name: &str, value: Value) {
-    if !matches!(name, "font" | "mono" | "scale" | "domainsAsked" | "theme" | "accent" | "starAsked" | "updateAuto") {
+    if !matches!(name, "font" | "mono" | "scale" | "termH" | "termFs" | "termFont" | "domainsAsked" | "theme" | "accent" | "starAsked" | "updateAuto") {
         return;
     }
     let Some(path) = prefs_path() else { return };
@@ -946,6 +946,28 @@ pub fn on_message(msg: &str) {
         "sharelogin" => sharing::sign_in(),
         "sharecancel" => sharing::cancel_sign_in(),
         "sharelogout" => sharing::sign_out(),
+        // The built-in terminal: its shells, and its own clipboard and links.
+        "term" => match c.name.as_str() {
+            // A selection can be a whole screen of output.
+            "copy" => {
+                if let Some(text) = c.value.as_str().filter(|t| !t.is_empty() && t.len() <= crate::term::COPY_MAX)
+                    && clipboard(text).is_err()
+                {
+                    emit(notice("error", "Couldn't copy to the clipboard"));
+                }
+            }
+            "paste" => {
+                let id = c.id;
+                crate::term::paste(move |text| emit(crate::term::paste_event(&id, &text)));
+            }
+            // A link in a shell's output: web pages only, never a file or an app's scheme.
+            "link" => {
+                if let Some(url) = c.value.as_str().filter(|u| crate::term::web_link(u)) {
+                    crate::app::open_url(url);
+                }
+            }
+            action => crate::term::handle(action, &c.id, &c.value, emit),
+        },
         // The page can't write the clipboard itself; IDs and short text only.
         "copy" => {
             if !c.name.is_empty() && c.name.len() <= 4096 && clipboard(&c.name).is_err() {

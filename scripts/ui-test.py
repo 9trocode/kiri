@@ -15,7 +15,11 @@ UI = os.path.join(ROOT, "crates/kiri/src/ui")
 
 
 def page(test, os_name=None):
-    index = open(os.path.join(UI, "index.html")).read().replace("/*ICONS*/", open(os.path.join(UI, "icons.js")).read())
+    # As assemble.rs builds it: the icons and xterm.js spliced in.
+    xterm = lambda f: open(os.path.join(UI, "xterm", f)).read()
+    index = (open(os.path.join(UI, "index.html")).read().replace("/*ICONS*/", open(os.path.join(UI, "icons.js")).read(), 1)
+             .replace("/*XTERM_CSS*/", xterm("xterm.css"), 1)
+             .replace("/*XTERM_JS*/", "".join(xterm(f) + "\n" for f in ["xterm.js", "addon-fit.js", "addon-search.js", "addon-web-links.js"]), 1))
     if os_name and os_name != "macos":
         index = index.replace("<head>", f'<head><script>window.KIRI_OS = "{os_name}";</script>', 1)
     fixture = open(os.path.join(ROOT, "tests/ui/fixture.js")).read()
