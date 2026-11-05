@@ -156,9 +156,27 @@ fn set(args: &[String]) -> io::Result<()> {
 /// The label that keeps the settings a node was made with.
 const CONFIG_LABEL: &str = "dev.kiri.k8s.config";
 
-/// What of the settings a node is made with, as its label keeps them.
+/// What of the settings a node is made with, as its label keeps them. The
+/// host folders are in it too, so a node made before it had them (or before
+/// one existed) is made again at its next start.
 fn made_with(cfg: &Config) -> String {
-    serde_json::to_string(&(cfg.lan, &cfg.tls_san, cfg.api_port())).unwrap_or_default()
+    serde_json::to_string(&(cfg.lan, &cfg.tls_san, cfg.api_port(), host_folders())).unwrap_or_default()
+}
+
+/// The folders of this computer the node sees at their own paths, so a pod's
+/// `hostPath` names a file here as it would with k3s on the host itself
+/// (Rancher Desktop, k3s): the Mac's /Users and /Volumes, a Linux host's
+/// /home, /mnt and /media. Binds are recursive, so what is mounted under
+/// them when the node starts comes too.
+const HOST_FOLDERS: &[&str] = if cfg!(target_os = "macos") { &["/Users", "/Volumes"] } else { &["/home", "/mnt", "/media"] };
+
+fn host_folders() -> Vec<&'static str> {
+    HOST_FOLDERS.iter().copied().filter(|d| std::path::Path::new(d).is_dir()).collect()
+}
+
+/// The node's binds: its state, then the host folders.
+fn binds() -> Vec<String> {
+    std::iter::once(format!("{VOLUME}:/var/lib/rancher/k3s")).chain(host_folders().into_iter().map(|d| format!("{d}:{d}"))).collect()
 }
 
 fn ensure_daemon() -> io::Result<()> {
@@ -262,7 +280,7 @@ fn start(use_context: bool) -> io::Result<()> {
             "HostConfig": {
                 "Privileged": true,
                 "Tmpfs": {"/run": "", "/var/run": ""},
-                "Binds": [format!("{VOLUME}:/var/lib/rancher/k3s")],
+                "Binds": binds(),
                 "PortBindings": {"6443/tcp": [{"HostIp": if cfg.lan { "0.0.0.0" } else { "127.0.0.1" }, "HostPort": port.to_string()}]},
                 "RestartPolicy": {"Name": "unless-stopped"},
             },
@@ -509,6 +527,17 @@ mod tests {
         let stopped = serde_json::json!({"NetworkSettings": {"Ports": {}}, "Config": {"Labels": {"dev.kiri.k8s.port": "6450"}}});
         assert_eq!(super::bound_port(&stopped), Some(6450));
         assert_eq!(super::bound_port(&serde_json::json!({})), None);
+    }
+
+    #[test]
+    fn the_node_sees_the_host_folders_at_their_own_paths() {
+        let b = super::binds();
+        assert_eq!(b[0], "kiri-k8s:/var/lib/rancher/k3s");
+        let home = if cfg!(target_os = "macos") { "/Users" } else { "/home" };
+        assert!(b.contains(&format!("{home}:{home}")), "{b:?}");
+        // A node made before the folders were bound is made again.
+        let old = serde_json::to_string(&(false, Vec::<String>::new(), 6443u16)).unwrap();
+        assert_ne!(super::made_with(&super::Config::default()), old);
     }
 
     #[test]

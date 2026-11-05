@@ -141,9 +141,43 @@ fn config() -> Config {
     config_path().ok().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
-/// What of the settings a node is made with, as its label keeps them.
+/// What of the settings a node is made with, as its label keeps them. The
+/// drives' folder is in it too, so a node made before it had it is made
+/// again at its next start.
 fn made_with(cfg: &Config) -> String {
-    serde_json::to_string(&(cfg.lan, &cfg.tls_san, cfg.api_port())).unwrap_or_default()
+    serde_json::to_string(&(cfg.lan, &cfg.tls_san, cfg.api_port(), drives())).unwrap_or_default()
+}
+
+/// Where WSL puts this PC's drives (`/mnt`, unless `[automount] root` in
+/// the engine distro's wsl.conf moves it), found once. The node sees it at
+/// the same path, so a pod's `hostPath: /mnt/d/...` is drive D, as it is
+/// with k3s in WSL itself (Rancher Desktop). The bind is recursive: every
+/// drive WSL has mounted when the node starts comes with it.
+fn drives() -> Option<String> {
+    static ROOT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| {
+        let mut wsl = crate::win::tool("wsl.exe");
+        std::os::windows::process::CommandExt::creation_flags(&mut wsl, 0x0800_0000); // CREATE_NO_WINDOW
+        if let Some(d) = crate::engine::distro() {
+            wsl.args(["-d", &d]);
+        }
+        let out = wsl.args(["--", "wslpath", "-a", "C:/"]).stdin(std::process::Stdio::null()).output().ok()?;
+        drives_root(&String::from_utf8_lossy(&out.stdout))
+    })
+    .clone()
+}
+
+/// The drives' folder from `wslpath -a C:/` (`/mnt/c/` → `/mnt`); none
+/// when drives sit at the top (`/c/`), which isn't a folder to bind.
+fn drives_root(c: &str) -> Option<String> {
+    let c = c.trim().trim_end_matches('/');
+    let (root, letter) = c.rsplit_once('/')?;
+    (letter.eq_ignore_ascii_case("c") && root.starts_with('/') && root.len() > 1 && !root.contains(['\\', ':'])).then(|| root.to_owned())
+}
+
+/// The node's binds: its state, then the drives' folder.
+fn binds() -> Vec<String> {
+    std::iter::once(format!("{VOLUME}:/var/lib/rancher/k3s")).chain(drives().map(|d| format!("{d}:{d}"))).collect()
 }
 
 /// The port a node container publishes its API server on: its live binding
@@ -425,7 +459,7 @@ fn start(say: &dyn Fn(&str)) -> io::Result<()> {
             "HostConfig": {
                 "Privileged": true,
                 "Tmpfs": {"/run": "", "/var/run": ""},
-                "Binds": [format!("{VOLUME}:/var/lib/rancher/k3s")],
+                "Binds": binds(),
                 "PortBindings": {"6443/tcp": [{"HostIp": if cfg.lan { "0.0.0.0" } else { "127.0.0.1" }, "HostPort": port.to_string()}]},
                 "RestartPolicy": {"Name": "unless-stopped"},
             },
@@ -707,6 +741,24 @@ fn stop_logs() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_drives_folder_comes_from_wslpath() {
+        assert_eq!(super::drives_root("/mnt/c/\n").as_deref(), Some("/mnt"));
+        assert_eq!(super::drives_root("/windir/c/").as_deref(), Some("/windir"));
+        for none in ["/c/", "", "C:/", "wslpath: error", "/mnt/d/"] {
+            assert_eq!(super::drives_root(none), None, "{none}");
+        }
+    }
+
+    #[test]
+    fn the_node_sees_the_drives_at_their_own_paths() {
+        let b = super::binds();
+        assert_eq!(b[0], "kiri-k8s:/var/lib/rancher/k3s");
+        if let Some(d) = super::drives() {
+            assert!(b.contains(&format!("{d}:{d}")), "{b:?}");
+        }
+    }
+
     #[test]
     fn the_port_comes_from_the_binding_then_the_label() {
         let running = serde_json::json!({"NetworkSettings": {"Ports": {"6443/tcp": [{"HostIp": "127.0.0.1", "HostPort": "6444"}]}}, "Config": {"Labels": {"dev.kiri.k8s.port": "6450"}}});
