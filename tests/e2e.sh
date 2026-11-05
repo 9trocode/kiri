@@ -18,6 +18,12 @@ FAILED=()
 # own Finder folder (~/Kiri Dev) and no *.kiri.localhost routers: there is
 # one pair of ports 80 and 443 on a Mac, and the installed Kiri has them.
 FEATURE=${DOCKER_CONTEXT#kiri}; FEATURE=${FEATURE#-}
+# The engine under test's socket. Every `kiri` command (machines, k8s) and
+# every direct API call goes there, never to another Kiri on this Mac: once,
+# the Kubernetes checks ran on the installed Kiri and deleted its cluster.
+SOCK=$(docker context inspect "$DOCKER_CONTEXT" --format '{{.Endpoints.docker.Host}}' 2>/dev/null); SOCK=${SOCK#unix://}
+[ -S "$SOCK" ] || { echo "e2e: no engine socket for context $DOCKER_CONTEXT ($SOCK)"; exit 1; }
+export KIRI_SOCKET=$SOCK
 if [ -z "$FEATURE" ]; then KF="$HOME/Kiri"; else KF="$HOME/Kiri $(printf %s "${FEATURE:0:1}" | tr a-z A-Z)${FEATURE:1}"; fi
 KFQ=$(printf %q "$KF")
 
@@ -751,14 +757,16 @@ fi
 if [ "${K8S:-0}" = 1 ]; then
   section "Kubernetes (K8S=1)"
   KH=$(mktemp -d); mkdir -p "$KH/.kube"
-  KK="env HOME=$KH KIRI_SOCKET=$HOME/.kiri/run/docker.sock $KQ k8s"
+  KK="env HOME=$KH KIRI_SOCKET=$SOCK $KQ k8s"
   t k8s-start "is ready" bash -c "$KK start"
-  t k8s-node "Ready" env HOME="$KH" kubectl --context kiri get nodes
-  t k8s-deploy "successfully rolled out" bash -c "env HOME=$KH kubectl --context kiri create deployment web --image=nginx:alpine >/dev/null && env HOME=$KH kubectl --context kiri rollout status deploy/web --timeout=120s"
+  # The context `kiri k8s start` wrote: named after the Kiri build, not always `kiri`.
+  KCTX=$(env HOME="$KH" kubectl config get-contexts -o name 2>/dev/null | head -1); KCTX=${KCTX:-kiri}
+  t k8s-node "Ready" env HOME="$KH" kubectl --context $KCTX get nodes
+  t k8s-deploy "successfully rolled out" bash -c "env HOME=$KH kubectl --context $KCTX create deployment web --image=nginx:alpine >/dev/null && env HOME=$KH kubectl --context $KCTX rollout status deploy/web --timeout=120s"
   # CoreDNS may still be starting: ask a few times, as a client would.
-  t k8s-service-dns "Welcome to nginx" bash -c "env HOME=$KH kubectl --context kiri expose deploy web --port 80 >/dev/null; for i in 1 2 3 4 5 6; do out=\$(env HOME=$KH kubectl --context kiri run t\$i --rm -i --restart=Never --image=alpine -- wget -qO- -T 5 http://web.default.svc.cluster.local 2>/dev/null); echo \"\$out\" | grep -q Welcome && break; sleep 3; done; echo \"\$out\""
-  t k8s-loadbalancer "Welcome to nginx" bash -c "env HOME=$KH kubectl --context kiri expose deploy web --name web-lb --type=LoadBalancer --port 18091 --target-port 80 >/dev/null; for i in \$(seq 60); do curl -s -m 2 http://localhost:18091 | grep -q Welcome && break; sleep 2; done; curl -s -m 2 http://localhost:18091"
-  t k8s-loadbalancer-gone "gone" bash -c "env HOME=$KH kubectl --context kiri delete svc web-lb >/dev/null; sleep 7; curl -s -m 2 http://localhost:18091 || echo gone"
+  t k8s-service-dns "Welcome to nginx" bash -c "env HOME=$KH kubectl --context $KCTX expose deploy web --port 80 >/dev/null; for i in 1 2 3 4 5 6; do out=\$(env HOME=$KH kubectl --context $KCTX run t\$i --rm -i --restart=Never --image=alpine -- wget -qO- -T 5 http://web.default.svc.cluster.local 2>/dev/null); echo \"\$out\" | grep -q Welcome && break; sleep 3; done; echo \"\$out\""
+  t k8s-loadbalancer "Welcome to nginx" bash -c "env HOME=$KH kubectl --context $KCTX expose deploy web --name web-lb --type=LoadBalancer --port 18091 --target-port 80 >/dev/null; for i in \$(seq 60); do curl -s -m 2 http://localhost:18091 | grep -q Welcome && break; sleep 2; done; curl -s -m 2 http://localhost:18091"
+  t k8s-loadbalancer-gone "gone" bash -c "env HOME=$KH kubectl --context $KCTX delete svc web-lb >/dev/null; sleep 7; curl -s -m 2 http://localhost:18091 || echo gone"
   t k8s-stop "exited" bash -c "$KK stop >/dev/null && $KK status"
   t k8s-resume "is ready" bash -c "$KK start"
   t k8s-delete "deleted" bash -c "$KK delete"
@@ -779,7 +787,7 @@ if [ "${SOAK:-0}" -gt 0 ]; then
   fds() { lsof -p "$DPID" 2>/dev/null | wc -l | tr -d ' '; }
   guest() { $D run --rm --network host alpine sh -c 'echo "$(ls /var/lib/kiri/containers 2>/dev/null | wc -l) $(ls -d /sys/fs/cgroup/kiri/*/ 2>/dev/null | wc -l) $(ip -o link | grep -c " kv") $(ls /run/kiri 2>/dev/null | wc -l) $(awk "/MemTotal/{t=\$2} /MemAvailable/{a=\$2} END{print t-a}" /proc/meminfo)"' 2>/dev/null; }
   # The balloon's pages count as used inside the guest; take them out.
-  ballooned() { curl -s --unix-socket "$HOME/.kiri/run/docker.sock" http://d/info | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d["KiriMemoryCeiling"] - d["KiriMemoryTarget"]) // 1024)'; }
+  ballooned() { curl -s --unix-socket "$SOCK" http://d/info | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d["KiriMemoryCeiling"] - d["KiriMemoryTarget"]) // 1024)'; }
   # Warm up, then take the baseline.
   for i in $(seq 20); do $D run --rm alpine true >/dev/null 2>&1; done
   read -r c0 g0 v0 r0 m0 <<<"$(guest)"; m0=$((m0 - $(ballooned)))
