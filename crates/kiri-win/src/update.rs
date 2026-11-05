@@ -32,6 +32,9 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+#[path = "../../kiri/src/ui/recheck.rs"]
+mod recheck;
+
 use serde_json::json;
 
 use crate::engine::{emit, notice};
@@ -449,6 +452,16 @@ pub fn check_now(manual: bool) {
         {
             emit(json!({"type": "enginestale", "version": v}).to_string());
         }
+        feed_check(manual);
+    });
+    // And every 6 hours while Kiri runs (recheck.rs), as on the Mac.
+    recheck::start(|| feed_check(false));
+}
+
+/// Whether the feed has a newer release, and one already staged; the
+/// window's check and the 6-hourly one.
+fn feed_check(manual: bool) {
+    {
         // A test build (0.1.8-dev.42, scripts/ci/test-version.sh) isn't
         // updated from the feed: it would "update" back to its release.
         if CURRENT.contains("-dev") {
@@ -465,6 +478,7 @@ pub fn check_now(manual: bool) {
         if !manual && crate::engine::prefs()["updateAuto"] == false {
             return;
         }
+        recheck::checked();
         match latest() {
             Ok(r) if newer(&r.version, CURRENT) => {
                 update_state("available", Some(&r.version), None);
@@ -483,7 +497,7 @@ pub fn check_now(manual: bool) {
                 }
             }
         }
-    });
+    }
 }
 
 /// Download on the card: fetches, checks and stages the release in the

@@ -31,6 +31,7 @@ mod linux;
 use linux::{import, setup, update};
 
 mod brands;
+mod recheck;
 mod detail;
 mod hub;
 mod k8s;
@@ -566,7 +567,12 @@ fn update_check(manual: bool) {
     {
         emit(serde_json::json!({"type": "enginestale", "version": v}).to_string());
     }
-    // Kiri Dev is rebuilt from source, never updated from the feed, unless
+    feed_check(manual);
+}
+
+/// Whether the feed has a newer release, and one already staged; the
+/// window's check and the 6-hourly one (recheck.rs).
+fn feed_check(manual: bool) {    // Kiri Dev is rebuilt from source, never updated from the feed, unless
     // KIRI_UPDATE_URL names a test feed (to try the update card and What's new).
     if crate::flavor::dev() && std::env::var_os("KIRI_UPDATE_URL").is_none() {
         if manual {
@@ -591,6 +597,7 @@ fn update_check(manual: bool) {
     if !manual && prefs()["updateAuto"] == false {
         return;
     }
+    recheck::checked();
     // Linux's kiri comes from a .deb or .rpm: the feed only says whether a
     // newer one exists, and About links to the releases page, so no card.
     if cfg!(target_os = "linux") {
@@ -1947,9 +1954,11 @@ fn handle(text: &str, tx: &Sender<Cmd>, autostart: bool, view: Option<&str>) {
                 }
             });
             diag::report::spawn_crash_sender(Duration::from_secs(5), None);
-            // A newer release, checked once per window, quietly; one
-            // already downloaded; an engine still on an older build.
+            // A newer release, checked when the window opens and every 6
+            // hours after (recheck.rs), quietly; one already downloaded; an
+            // engine still on an older build.
             std::thread::spawn(|| update_check(false));
+            recheck::start(|| feed_check(false));
             // The first time the app opens: ask, once, whether to use *.kiri.local (the Mac only, so far).
             if cfg!(target_os = "macos") && !crate::flavor::dev() && !crate::daemon::dns::installed() && prefs()["domainsAsked"] != true {
                 set_pref("domainsAsked", true.into());

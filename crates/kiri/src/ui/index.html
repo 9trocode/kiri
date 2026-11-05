@@ -5786,6 +5786,8 @@ window.kiri = {
         if (!e.manual && (prefs.updateSkip === r.version || (prefs.updateSnoozeUntil || 0) > Date.now())) break;
         if (e.manual) { setPref("updateSkip", null); setPref("updateSnoozeUntil", null); }
         if (ui.upd && ui.upd.phase !== "available") break;
+        // The 6-hourly check finds the same release: a card closed until the next launch stays closed.
+        if (!e.manual && ui.upd?.hidden && ui.upd.version === r.version) break;
         ui.upd = { phase: "available", version: r.version, current: e.current, notes: r.notes || "", notesUrl: r.notes_url || "", hidden: false };
         renderUpdate(); break;
       }
@@ -5794,7 +5796,7 @@ window.kiri = {
         if (ui.upd.phase !== "downloading") Object.assign(ui.upd, { phase: "downloading", t0: Date.now(), g0: e.got });
         Object.assign(ui.upd, { got: e.got, total: e.total }); renderUpdate(); break;
       case "updatestate": ui.updState = { ...e, checking: false }; if (ui.view === "settings" && prefs.tab === "about") render(); break;
-      case "updateready": ui.upd = { ...(ui.upd || {}), phase: "ready", version: e.version, hidden: false, error: "" }; renderUpdate(); break;
+      case "updateready": if (ui.upd?.phase === "ready" && ui.upd.version === e.version && ui.upd.hidden) break; ui.upd = { ...(ui.upd || {}), phase: "ready", version: e.version, hidden: false, error: "" }; renderUpdate(); break;
       case "updatecancelled": if (ui.upd) Object.assign(ui.upd, { phase: "available", hidden: true }); renderUpdate(); break;
       case "updateerror": if (ui.upd) Object.assign(ui.upd, { phase: "available", hidden: false, error: e.error }); else toast("error", e.error); renderUpdate(); break;
       case "enginestale": ui.engineStale = e.version; ui.staleHidden = false; renderUpdate(); break;
