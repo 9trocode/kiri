@@ -659,6 +659,8 @@ pub fn attach(bridges: &mut Bridges, bridge: &str, host_ifname: &str, pid: libc:
     let bridge_index = bridges.ensure(bridge, (!no_ipv4).then_some(gateway), prefix, v6)?;
     let netns = std::fs::File::open(format!("/proc/{pid}/ns/net"))?;
     let mut host = Netlink::open(libc::NETLINK_ROUTE)?;
+    // A stopped container's veth may still hold this address and MAC.
+    delete_retired(&mut host);
     let ifname = format!("eth{n}");
     netlink::create_veth(&mut host, host_ifname, bridge_index, &netns, CONTAINER_MTU, &ifname, mac)?;
     // By name: a new namespace may have tunl0, gre0 … before it.
@@ -684,6 +686,29 @@ pub fn attach(bridges: &mut Bridges, bridge: &str, host_ifname: &str, pid: libc:
         netlink::add_default_route6(&mut inner, index, v.gateway)?;
     }
     Ok(())
+}
+
+/// Host-side veths of stopped containers, deleted by the next `attach`.
+static RETIRED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Notes a stopped container's host-side veths for the next `attach` to
+/// delete. Deleting one waits out RCU, 15-40 ms that every request after
+/// the exit would queue behind on the agent's loop; and the agent stays
+/// single-threaded, as clone3 without CLONE_VM needs. Left to the kernel
+/// they went only as the namespace did, a second or more later: by then the
+/// next container had the same address and MAC, the bridge sent its replies
+/// to the old namespace, and that answered with resets (a download that
+/// broke mid-TLS or stalled).
+pub fn retire(veths: &[String]) {
+    RETIRED.lock().unwrap_or_else(|e| e.into_inner()).extend_from_slice(veths);
+}
+
+/// Deletes the veths `retire` noted. Gone already (the kernel took them
+/// with their namespace) is fine.
+fn delete_retired(nl: &mut Netlink) {
+    for v in std::mem::take(&mut *RETIRED.lock().unwrap_or_else(|e| e.into_inner())) {
+        let _ = netlink::delete_link(nl, &v);
+    }
 }
 
 /// Unplugs a container's extra network by its host-side veth.

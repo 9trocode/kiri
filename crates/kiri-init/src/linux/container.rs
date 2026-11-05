@@ -489,14 +489,15 @@ pub fn oom_killed(p: &Process) -> bool {
 /// `netns_shared`: another live process still uses the container's network
 /// namespace (a container started with `--network container:`). Only then
 /// are its veths deleted here, or they would live on with that namespace
-/// and keep its address. Otherwise the kernel deletes them as the namespace
-/// goes, off the agent's loop: deleting one here waits out RCU, 15-40 ms of
-/// netlink that every request after the exit queued behind.
+/// and keep its address. Otherwise the next container to be plugged in
+/// deletes them (see `net::retire`).
 pub fn teardown(p: &Process, netns_shared: bool) {
     if netns_shared {
         for v in &p.veths {
             let _ = net::detach(v);
         }
+    } else {
+        net::retire(&p.veths);
     }
     if let Some(t) = &p.teardown {
         undo_now(t, t.remove);

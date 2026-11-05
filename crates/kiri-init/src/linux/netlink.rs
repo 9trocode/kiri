@@ -181,14 +181,46 @@ fn ifinfo(index: i32, flags: u32, change: u32) -> [u8; 16] {
     b
 }
 
+/// Creates bridge `name` with a MAC address of its own. Without one a Linux
+/// bridge takes the lowest address among its ports, so the gateway's MAC
+/// changed whenever a container joined or left: every other container's ARP
+/// entry for it went stale, and their connections stalled, were reset or
+/// broke mid-TLS until it was asked again. Docker gives its bridges an
+/// address for the same reason. A bridge left by an earlier run without
+/// one (a Linux host) gets one too.
 pub fn create_bridge(nl: &mut Netlink, name: &str) -> io::Result<()> {
-    let mut m = Msg::new(RTM_NEWLINK, NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL);
-    m.raw(&ifinfo(0, 0, 0)).attr_str(IFLA_IFNAME, name);
-    m.nest(IFLA_LINKINFO).attr_str(IFLA_INFO_KIND, "bridge").end();
-    match nl.request(&mut [m]) {
-        Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
+    match nl.request(&mut [new_bridge(name, bridge_mac(random_bytes()))]) {
+        Err(e) if e.raw_os_error() == Some(libc::EEXIST) => {
+            // NET_ADDR_SET (3): someone set it, so it no longer follows the ports.
+            let kind = std::fs::read_to_string(format!("/sys/class/net/{name}/addr_assign_type")).unwrap_or_default();
+            if kind.trim() == "3" {
+                return Ok(());
+            }
+            let mut m = Msg::new(RTM_NEWLINK, NLM_F_ACK);
+            m.raw(&ifinfo(index_of(name)?, 0, 0)).attr(IFLA_ADDRESS, &bridge_mac(random_bytes()));
+            nl.request(&mut [m])
+        }
         r => r,
     }
+}
+
+fn new_bridge(name: &str, mac: [u8; 6]) -> Msg {
+    let mut m = Msg::new(RTM_NEWLINK, NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL);
+    m.raw(&ifinfo(0, 0, 0)).attr_str(IFLA_IFNAME, name).attr(IFLA_ADDRESS, &mac);
+    m.nest(IFLA_LINKINFO).attr_str(IFLA_INFO_KIND, "bridge").end();
+    m
+}
+
+/// `b` as a locally administered unicast MAC address.
+fn bridge_mac(mut b: [u8; 6]) -> [u8; 6] {
+    b[0] = (b[0] & 0xfc) | 0x02;
+    b
+}
+
+fn random_bytes() -> [u8; 6] {
+    let mut b = [0u8; 6];
+    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| std::io::Read::read_exact(&mut f, &mut b));
+    b
 }
 
 /// Creates a veth pair: `host` stays here, attached to `bridge` and up; its
@@ -882,6 +914,18 @@ mod tests {
 
     fn be32(d: &[u8]) -> u32 {
         u32::from_be_bytes(d.try_into().unwrap())
+    }
+
+    #[test]
+    fn a_bridge_is_made_with_a_mac_address_of_its_own() {
+        let m = new_bridge("kiri0", bridge_mac([0xff; 6]));
+        let a = attrs(&m.buf[32..]); // nlmsghdr, ifinfomsg
+        assert_eq!(get(&a, IFLA_ADDRESS), &[0xfe, 0xff, 0xff, 0xff, 0xff, 0xff]);
+        assert_eq!(get(&a, IFLA_IFNAME), b"kiri0\0");
+        // Locally administered, never multicast.
+        for b in [[0u8; 6], [0x01; 6], [0xff; 6]] {
+            assert_eq!(bridge_mac(b)[0] & 0x03, 0x02);
+        }
     }
 
     /// A rule's expressions: (name, its NFTA_EXPR_DATA attributes).

@@ -185,6 +185,15 @@ t internet-dns "Address" $D run --rm alpine nslookup example.com
 t dns-default-bridge-gateway "nameserver 172.17.0.1" $D run --rm alpine cat /etc/resolv.conf
 code dns-default-bridge-no-loopback 1 $D run --rm alpine grep -q 127.0.0.11 /etc/resolv.conf
 t internet-https "200" $D run --rm curlimages/curl:latest -s -o /dev/null -w '%{http_code}' https://www.google.com
+# Each container gets the last one's address and MAC: its first download
+# broke mid-TLS or stalled while the old one's veth lingered, and one that
+# keeps running lost its gateway whenever the bridge's MAC moved.
+APKIDX=https://dl-cdn.alpinelinux.org/alpine/v3.22/main/aarch64/APKINDEX.tar.gz
+t first-download-x8 "8" bash -c "n=0; for i in \$(seq 8); do $D run --rm curlimages/curl:latest -s -m 20 -o /dev/null -w '%{exitcode}' $APKIDX | grep -qx 0 && n=\$((n+1)); done; echo \$n"
+$D run -d --name dl curlimages/curl:latest sh -c "while true; do curl -s -m 10 -o /dev/null -w '%{exitcode} ' $APKIDX; done" >/dev/null
+for _ in $(seq 6); do $D run --rm alpine true; sleep 1; done
+code download-while-others-start 1 bash -c "$D logs dl 2>&1 | grep -qE '(^| )[1-9][0-9]* '"
+$D rm -f dl >/dev/null
 t none-net "lo" $D run --rm --network none alpine ip link
 code none-no-internet 1 $D run --rm --network none alpine wget -qO- -T 2 http://example.com
 t host-net "192.168.64." $D run --rm --network host alpine ip -4 addr show eth0
