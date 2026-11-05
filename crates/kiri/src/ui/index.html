@@ -443,7 +443,15 @@ table.sized .name[data-detail] > div:last-child { max-width: none; }
 .swatches button { width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--sw); cursor: pointer; box-shadow: 0 0 0 2px var(--bg), 0 0 0 2px var(--bg); }
 .swatches button[aria-checked=true] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
 .range { grid-row: 1 / span 2; grid-column: 2; display: flex; align-items: center; gap: 10px; }
-.range input { width: 200px; accent-color: var(--blue); }
+/* Drawn by Kiri, not the system: macOS WebKit, WebView2 (Chromium) and
+   WebKitGTK each draw a native slider their own way. This is the Mac's: a
+   dark track, filled in blue up to a white pill. --fill is set from the
+   value (rangeFill). */
+.range input { -webkit-appearance: none; appearance: none; width: 200px; height: 9px; margin: 0; border-radius: 999px; cursor: pointer;
+  background: linear-gradient(to right, var(--blue) var(--fill, 0%), var(--line) var(--fill, 0%)); }
+.range input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 26px; height: 18px; border-radius: 999px; background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35), 0 0 0 .5px rgba(0, 0, 0, .2); }
+.range input:focus-visible { outline: 2px solid var(--blue-light); outline-offset: 4px; }
 .range .num { min-width: 64px; text-align: right; font-weight: 600; }
 .isec { display: grid; gap: 6px; }
 .ihead { display: flex; gap: 8px; align-items: baseline; }
@@ -770,6 +778,9 @@ td.actions .acts-row { margin-left: auto; width: max-content; padding-left: 24px
 .settings .tabs button[aria-current=true] { background: var(--raised); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 .settings .tabs button[aria-current=true] svg { color: var(--blue); }
 .pane { display: grid; gap: 22px; min-width: 0; }
+/* A tab with more than one pane (Resources: the engine, then its limits)
+   keeps them together in the second column of .settings. */
+.panes { display: grid; gap: 28px; min-width: 0; }
 .pane h3 { font-size: var(--fs-head); }
 .updrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .updpill { font-size: var(--fs-small); font-weight: 600; padding: 2px 7px; border-radius: 99px; background: color-mix(in srgb, #3FB97A 16%, transparent); color: color-mix(in srgb, #3FB97A 70%, var(--text)); }
@@ -3148,6 +3159,12 @@ function networkPane() {
 /* Settings → Resources: the most the Linux VM may use. */
 const gb = (mib) => `${Math.round(mib / 1024)} GB`;
 const cpuText = (n) => `${n} ${n === 1 ? "CPU" : "CPUs"}`;
+/* How far along its track a slider's blue fill reaches, as CSS: to the
+   middle of the thumb, which travels the track less its own 26 px. */
+const rangeFill = (v, min, max) => {
+  const f = max > min ? (v - min) / (max - min) : 0;
+  return `calc(13px + (100% - 26px) * ${f.toFixed(4)})`;
+};
 const resChanged = () => ui.res && (ui.resDraft.cpus !== ui.res.cpus || ui.resDraft.memory_mib !== ui.res.memory_mib);
 /* Settings › Resources: the engine's on/off, the same switch as the card. */
 function enginePane() {
@@ -3170,9 +3187,9 @@ function resourcesPane() {
   const pending = r.awake && (r.running_cpus !== r.cpus || Math.abs(r.running_memory_mib - r.memory_mib) > 64);
   return `<div class="pane"><h3>Resources</h3>
     <div class="pref"><span class="t">CPUs</span><span class="d">Shared with ${OS}: the VM only uses them while containers are busy.</span>
-      <div class="range"><input type="range" id="res-cpus" min="1" max="${r.max_cpus}" step="1" value="${d.cpus}" aria-label="CPUs"><span class="num" id="res-cpus-v">${cpuText(d.cpus)}</span></div></div>
+      <div class="range"><input type="range" id="res-cpus" min="1" max="${r.max_cpus}" step="1" value="${d.cpus}" aria-label="CPUs" style="--fill:${rangeFill(d.cpus, 1, r.max_cpus)}"><span class="num" id="res-cpus-v">${cpuText(d.cpus)}</span></div></div>
     <div class="pref"><span class="t">Memory</span><span class="d">The most the VM may take. It uses memory only as containers need it and gives the rest back to ${OS}.</span>
-      <div class="range"><input type="range" id="res-mem" min="1024" max="${maxGb * 1024}" step="1024" value="${Math.min(d.memory_mib, maxGb * 1024)}" aria-label="Memory"><span class="num" id="res-mem-v">${gb(d.memory_mib)}</span></div></div>
+      <div class="range"><input type="range" id="res-mem" min="1024" max="${maxGb * 1024}" step="1024" value="${Math.min(d.memory_mib, maxGb * 1024)}" aria-label="Memory" style="--fill:${rangeFill(Math.min(d.memory_mib, maxGb * 1024), 1024, maxGb * 1024)}"><span class="num" id="res-mem-v">${gb(d.memory_mib)}</span></div></div>
     ${r.overridden ? `<p class="muted">KIRI_CPUS or KIRI_MEMORY_MIB is set for the daemon, and it takes precedence over these.</p>` : ""}
     <div class="res-foot"><span class="muted">${r.awake ? `Running now with ${cpuText(r.running_cpus)} and up to ${gb(r.running_memory_mib)}.` : "The VM is asleep; it starts with these next time."}</span>
       <span style="flex:1"></span>
@@ -3259,7 +3276,7 @@ function renderSettings() {
     </dl>
     <p class="muted">The name comes from the Igbo word ntakịrị, “small”.</p></div>`;
   const html = `<div class="settings"><div class="tabs">${tab("appearance", "textaa", "Appearance")}${tab("resources", "stack", "Resources")}${tab("network", "globe", "Network")}${tab("builds", "hammer", "Builds")}${loginsOn() ? tab("registries", "lock", "Registries") : ""}${tab("kubernetes", "pods", "Kubernetes")}${tab("import", "stack", "Import")}${tab("domains", "network", "Domains")}${tab("diagnostics", "bug", "Diagnostics")}${tab("about", "info", "About")}</div>
-    ${prefs.tab === "diagnostics" ? diagPane() : prefs.tab === "about" ? aboutPane : prefs.tab === "domains" ? domainsPane : prefs.tab === "resources" ? enginePane() + resourcesPane() : prefs.tab === "network" ? networkPane() : prefs.tab === "builds" ? buildsPane() : prefs.tab === "registries" && loginsOn() ? registriesPane() : prefs.tab === "kubernetes" ? kubernetesPane() : prefs.tab === "import" ? importPane() : appearance}</div>`;
+    ${prefs.tab === "diagnostics" ? diagPane() : prefs.tab === "about" ? aboutPane : prefs.tab === "domains" ? domainsPane : prefs.tab === "resources" ? `<div class="panes">${enginePane()}${resourcesPane()}</div>` : prefs.tab === "network" ? networkPane() : prefs.tab === "builds" ? buildsPane() : prefs.tab === "registries" && loginsOn() ? registriesPane() : prefs.tab === "kubernetes" ? kubernetesPane() : prefs.tab === "import" ? importPane() : appearance}</div>`;
   // The container lists arrive every few seconds; rebuilding an unchanged page
   // closes an open menu. The font menus list names in the interface font: an
   // option in its own font made WebKit load every installed font (438 here)
@@ -3280,6 +3297,7 @@ function renderSettings() {
   }));
   for (const id of ["res-cpus", "res-mem"]) $(id)?.addEventListener("input", (ev) => {
     ui.resDraft[id === "res-cpus" ? "cpus" : "memory_mib"] = +ev.target.value;
+    ev.target.style.setProperty("--fill", rangeFill(+ev.target.value, +ev.target.min, +ev.target.max));
     $(`${id}-v`).textContent = id === "res-cpus" ? cpuText(+ev.target.value) : gb(+ev.target.value);
     $("res-save").disabled = !resChanged();
   });

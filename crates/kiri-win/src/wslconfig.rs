@@ -89,9 +89,9 @@ fn physical_mib() -> u64 {
     }
 }
 
-/// What the running VM has: CPUs, and memory rounded up to a whole GB
-/// (Linux reports a little less than WSL gave it). None while Kiri's
-/// engine isn't running, so that Settings never starts WSL.
+/// What the running VM has: CPUs, and memory in MiB as Linux reports it
+/// (MemTotal; see `as_set`). None while Kiri's engine isn't running, so
+/// that Settings never starts WSL.
 fn running() -> Option<(u64, u64)> {
     if !crate::client::alive() {
         return None;
@@ -106,7 +106,20 @@ fn running() -> Option<(u64, u64)> {
     let mut lines = text.lines();
     let cpus: u64 = lines.next()?.trim().parse().ok()?;
     let kib: u64 = lines.next()?.split_whitespace().nth(1)?.parse().ok()?;
-    Some((cpus, (kib >> 10).div_ceil(1024) * 1024))
+    Some((cpus, kib >> 10))
+}
+
+/// The memory the VM runs with, as Settings shows it. Linux reports less
+/// than WSL gave it: the kernel keeps some back, 1.2 GB of 64 GB, more than
+/// rounding up to a whole GB makes good, and Settings said "up to 63 GB"
+/// and offered a restart that changed nothing. Up to a sixteenth under
+/// the setting is the setting; anything else is rounded up to a whole GB.
+fn as_set(running_mib: u64, set_mib: u64) -> u64 {
+    if running_mib <= set_mib && running_mib + set_mib / 16 >= set_mib {
+        set_mib
+    } else {
+        running_mib.div_ceil(1024) * 1024
+    }
 }
 
 fn event() -> Value {
@@ -121,7 +134,7 @@ fn event() -> Value {
         "cpus": cpus,
         "memory_mib": memory,
         "running_cpus": now.map_or(cpus, |r| r.0),
-        "running_memory_mib": now.map_or(memory, |r| r.1),
+        "running_memory_mib": now.map_or(memory, |r| as_set(r.1, memory)),
         "awake": now.is_some(),
         "max_cpus": max_cpus,
         "max_memory_mib": max_mib,
@@ -174,6 +187,16 @@ pub fn restart() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vm_running_as_set_shows_its_setting() {
+        // WSL given 64 GB: Linux's MemTotal is 65843312 kB.
+        assert_eq!(as_set(65843312 >> 10, 65536), 65536);
+        assert_eq!(as_set(8000, 8192), 8192);
+        // Given less, or more, than the setting now says: what it has.
+        assert_eq!(as_set(65843312 >> 10, 32768), 63 * 1024);
+        assert_eq!(as_set(16000, 65536), 16 * 1024);
+    }
 
     #[test]
     fn reads_sizes() {
