@@ -527,6 +527,17 @@ t priv-inspect "true" bash -c "$D run -d --name pv --privileged alpine sleep 30 
 t priv-exec-caps "000001ffffffffff" $D exec pv grep CapEff /proc/self/status
 $D rm -f pv >/dev/null
 
+section "kernel: netfilter, tc and interfaces"
+# Every line of tests/kernel-features.sh (nftables expressions, the iptables
+# matches and targets, ipset, IPVS, tc, ss, macvlan/WireGuard/IPsec...) is
+# one check: Kiri's guest kernel builds them all in, as it loads no modules.
+KFEAT=$(perl -e 'alarm 180; exec @ARGV' $D run --rm --privileged -v "$(cd "$(dirname "$0")" && pwd)/kernel-features.sh:/k.sh:ro" alpine:3.22 sh /k.sh 2>&1 | tr -d '\r')
+# One check per line; the line itself is what shows when it fails.
+for name in $(printf '%s\n' "$KFEAT" | grep -E '^[a-z0-9-]+ (ok|FAIL)' | cut -d' ' -f1); do
+  t "kernel-$name" "$name ok" bash -c 'printf "%s\n" "$1" | grep -E "^$2 (ok|FAIL)"' _ "$KFEAT" "$name"
+done
+printf '%s\n' "$KFEAT" | grep -qE '^[a-z0-9-]+ (ok|FAIL)' || t kernel-features "ok" printf '%s\n' "$KFEAT"
+
 section "images: tag, save, load"
 IMD=$(mktemp -d)
 t tag "kiri-test/alp:v1" bash -c "$D tag alpine kiri-test/alp:v1 && $D images --format '{{.Repository}}:{{.Tag}}'"

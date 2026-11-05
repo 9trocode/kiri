@@ -240,6 +240,10 @@ pub fn uplink() -> io::Result<Option<Dhcp>> {
     let mut nl = Netlink::open(libc::NETLINK_ROUTE)?;
     netlink::set_up(&mut nl, index)?;
     sys::write_file("/proc/sys/net/ipv4/ip_forward", "1")?;
+    // The tunnel drivers are built in, and each would add its idle fallback
+    // device (tunl0, gre0, sit0, ip6tnl0...) to every container's network:
+    // they stay in the VM's own, as on a machine that loads them as modules.
+    let _ = sys::write_file("/proc/sys/net/core/fb_tunnels_only_for_init_net", "1");
     install_nat(Nat { uplink: index, redirect: true, dnat: Vec::new(), gateway: [0; 4] })?;
     let _ = VM_UPLINK_INDEX.set(index);
     Ok(Some(Dhcp::start(index)?))
