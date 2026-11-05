@@ -164,7 +164,7 @@ fn walk(host: &Path, container: &Path, out: &mut Vec<(String, fs::Metadata)>) ->
 
 /// Makes the device nodes in the container (relative paths looked up
 /// inside `root`, its root before pivot_root). A node already there (a
-/// privileged container's devtmpfs) is left alone.
+/// privileged container's copy of the host's devices) is left alone.
 pub fn make_nodes(root: BorrowedFd<'_>, nodes: &[Node]) -> io::Result<()> {
     for n in nodes {
         let path = Path::new(std::ffi::OsStr::from_bytes(n.target.as_bytes()));

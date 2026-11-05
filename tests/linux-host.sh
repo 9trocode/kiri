@@ -40,6 +40,13 @@ t ipv6-cleanup "gone" "docker rm -f v6a web6 >/dev/null; docker network rm lh6 >
 t ipv6-forwarding-restored "0" "cat /proc/sys/net/ipv6/conf/all/forwarding"
 # A build's --add-host host-gateway is the bridge gateway, as for docker run (not the Mac VM's 198.19.248.254).
 t build-host-gateway "GW-OK" "gw=\$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'); mkdir -p /bhg && printf 'FROM alpine:3.21\\nRUN grep -w hgw /etc/hosts\\n' > /bhg/Dockerfile && DOCKER_BUILDKIT=0 docker build --no-cache --add-host hgw:host-gateway /bhg 2>&1 | grep -q \"\$gw\" && echo GW-OK"
+# A privileged container must not touch the host's /dev. The kernel has one
+# devtmpfs, so mount it, put ptmx back as the device it should be, run a
+# privileged container and look again: once, ptmx became a link into the
+# host's /dev/pts and no user on the machine could open a terminal.
+t privileged-host-ptmx "character special file" "mkdir -p /hostdev && mount -t devtmpfs none /hostdev && { [ -c /hostdev/ptmx ] || { rm -f /hostdev/ptmx && mknod -m 666 /hostdev/ptmx c 5 2 && chgrp 5 /hostdev/ptmx; }; } && docker run --rm --privileged alpine true && stat -c %F /hostdev/ptmx; umount /hostdev"
+t privileged-devices "DEVS-OK" "docker run --rm --privileged alpine sh -c 'test -c /dev/kmsg && test -c /dev/null && test -L /dev/ptmx && test -c /dev/pts/ptmx && echo DEVS-OK'"
+t privileged-tty "/dev/pts/0" "docker run --rm -t --privileged alpine tty"
 t cleanup "web" "docker rm -f web db dns"
 $D rm -f kiri-linux-host >/dev/null
 echo "$PASS passed, $FAIL failed"

@@ -1054,8 +1054,8 @@ fn exec_child(p: &Prepared, namespaces: &[(fs::File, libc::c_int)], io: &ChildSt
     finish_child(p, io, false)
 }
 
-/// Binds the container's terminal over /dev/console; a privileged
-/// container's devtmpfs has the VM's there, an unprivileged one has none.
+/// Binds the container's terminal over /dev/console; neither a privileged
+/// nor an unprivileged container's /dev has one of its own.
 fn bind_console(slave: &OwnedFd) {
     let Ok(pts) = fs::read_link(format!("/proc/self/fd/{}", slave.as_raw_fd())) else { return };
     let Ok(pts) = CString::new(pts.into_os_string().into_encoded_bytes()) else { return };
@@ -1198,10 +1198,15 @@ fn mount_container_filesystems(privileged: bool, shm_size: u64) -> io::Result<()
     }
     sys::mount(c"proc", c"proc", c"proc", nosuid_nodev_noexec, None)?;
     sys::mount(c"sysfs", c"sys", c"sysfs", nosuid_nodev_noexec | ro, None)?;
+    // Never devtmpfs, even for a privileged container: the kernel has one
+    // devtmpfs, so mounting it again hands the container the host's own
+    // /dev, and the links made below (dev/ptmx -> pts/ptmx) would replace
+    // the host's device nodes. On a Linux host that broke every terminal on
+    // the machine. A privileged container gets copies of the host's devices
+    // on its own tmpfs instead, as runc does.
+    sys::mount(c"tmpfs", c"dev", c"tmpfs", libc::MS_NOSUID, Some(c"mode=755,size=65536k"))?;
     if privileged {
-        sys::mount(c"devtmpfs", c"dev", c"devtmpfs", libc::MS_NOSUID, None)?;
-    } else {
-        sys::mount(c"tmpfs", c"dev", c"tmpfs", libc::MS_NOSUID, Some(c"mode=755,size=65536k"))?;
+        copy_host_devices(Path::new("/dev"), Path::new("dev"))?;
     }
     for (name, major, minor) in [
         (c"dev/null", 1, 3),
@@ -1212,7 +1217,7 @@ fn mount_container_filesystems(privileged: bool, shm_size: u64) -> io::Result<()
         (c"dev/tty", 5, 0),
     ] {
         if privileged {
-            // devtmpfs has them already.
+            // Copied from the host already.
             continue;
         }
         sys::mknod(name, libc::S_IFCHR | 0o666, major, minor)?;
@@ -1227,7 +1232,7 @@ fn mount_container_filesystems(privileged: bool, shm_size: u64) -> io::Result<()
         (c"/proc/self/fd/2", c"dev/stderr"),
         (c"pts/ptmx", c"dev/ptmx"),
     ] {
-        // SAFETY: valid NUL-terminated strings; devtmpfs may have some.
+        // SAFETY: valid NUL-terminated strings; the host copy may have some.
         unsafe {
             libc::unlink(link.as_ptr());
             libc::symlink(target.as_ptr(), link.as_ptr())
@@ -1244,6 +1249,48 @@ fn mount_container_filesystems(privileged: bool, shm_size: u64) -> io::Result<()
     sys::mount(c"cgroup2", c"sys/fs/cgroup", c"cgroup2", nosuid_nodev_noexec | ro, None)?;
     if !privileged {
         harden_proc()?;
+    }
+    Ok(())
+}
+
+/// Recreates the host's character and block devices under `to` (the
+/// container's fresh /dev tmpfs), keeping their mode and owner, for a
+/// privileged container. Skips what the container gets its own of (pts,
+/// shm, mqueue, console, the fd links) and symlinks, as runc does. Devices
+/// that appear on the host later don't show up, as on Docker.
+fn copy_host_devices(from: &Path, to: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if from == Path::new("/dev")
+            && matches!(name.as_bytes(), b"pts" | b"shm" | b"mqueue" | b"fd" | b"console" | b".lxc" | b".lxd-mounts" | b".udev")
+        {
+            continue;
+        }
+        let Ok(meta) = fs::symlink_metadata(entry.path()) else { continue };
+        let ft = meta.file_type();
+        let dest = to.join(&name);
+        if ft.is_dir() {
+            if fs::create_dir(&dest).is_ok() {
+                let _ = copy_host_devices(&entry.path(), &dest);
+            }
+            continue;
+        }
+        if !(ft.is_char_device() || ft.is_block_device()) {
+            continue;
+        }
+        let Ok(c) = CString::new(dest.as_os_str().as_bytes()) else { continue };
+        // SAFETY: valid NUL-terminated path.
+        if unsafe { libc::mknod(c.as_ptr(), meta.mode() as libc::mode_t, meta.rdev() as libc::dev_t) } != 0 {
+            continue;
+        }
+        // mknod applies the umask; keep the host's permissions and owner.
+        // SAFETY: valid NUL-terminated path.
+        unsafe {
+            libc::chmod(c.as_ptr(), (meta.mode() & 0o7777) as libc::mode_t);
+            libc::chown(c.as_ptr(), meta.uid(), meta.gid());
+        }
     }
     Ok(())
 }
