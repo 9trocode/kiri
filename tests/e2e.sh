@@ -228,6 +228,7 @@ code network-rm-builtin 1 $D network rm bridge
 # (as with Docker), while the network itself still works.
 $D network create --internal intnet >/dev/null
 $D run -d --name intweb --network intnet nginx:alpine >/dev/null
+nginx_up intweb
 t internal-same-net "Welcome to nginx" $D run --rm --network intnet alpine wget -qO- -T 5 http://intweb
 t internal-no-route "unreachable" $D run --rm --network intnet alpine sh -c 'ping -c 1 -W 2 1.1.1.1 2>&1; true'
 t internal-no-default "none" $D run --rm --network intnet alpine sh -c 'ip route | grep -q default && echo default || echo none'
@@ -694,7 +695,10 @@ t stdin-slow-reader "30000000" bash -c "head -c 30000000 /dev/zero | $D run --rm
 t seccomp-fork "node ok" $D run --rm node:22-alpine node -e 'require("child_process").execSync("true"); console.log("node ok")'
 t cap-default "00000000a80425fb" $D run --rm alpine grep CapEff /proc/self/status
 t cap-drop-all "0000000000000000" $D run --rm --cap-drop ALL alpine grep CapEff /proc/self/status
-t cap-drop-net-raw "permission denied" $D run --rm --cap-drop NET_RAW alpine ping -c1 -W1 127.0.0.1
+# ping needs no NET_RAW: it uses ping sockets, which ping_group_range opens
+# to every group, as on Docker. Without them, dropping NET_RAW stops it.
+t cap-drop-net-raw-ping "round-trip" $D run --rm --cap-drop NET_RAW alpine ping -c1 -W1 127.0.0.1
+t cap-drop-net-raw "permission denied" $D run --rm --cap-drop NET_RAW --sysctl net.ipv4.ping_group_range="1 0" alpine ping -c1 -W1 127.0.0.1
 t cap-add-net-admin "ok" bash -c "$D run --rm --cap-add NET_ADMIN alpine sh -c 'ip link set lo mtu 1400 && echo ok'"
 t cap-add-sys-admin "mounted" $D run --rm --cap-add SYS_ADMIN alpine sh -c 'mount -t tmpfs t /mnt && echo mounted'
 t cap-inspect "NET_ADMIN]" bash -c "$D create --name capi --cap-add NET_ADMIN alpine >/dev/null; $D inspect -f '{{.HostConfig.CapAdd}}' capi; $D rm capi >/dev/null"
