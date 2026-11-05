@@ -183,6 +183,23 @@ pub fn make_nodes(root: BorrowedFd<'_>, nodes: &[Node]) -> io::Result<()> {
     Ok(())
 }
 
+/// What Docker writes in every container with a network namespace of its
+/// own: a non-root process may listen on any port (nginx or Caddy on 80 as
+/// a user) and ping without CAP_NET_RAW. A `--sysctl` for the same key
+/// wins, as it does on Docker.
+const NET_DEFAULTS: [(&str, &str); 2] = [("net/ipv4/ip_unprivileged_port_start", "0"), ("net/ipv4/ping_group_range", "0 2147483647")];
+
+/// Puts Docker's defaults first in `sysctls`, leaving out any key the
+/// container sets itself.
+pub fn add_net_defaults(sysctls: &mut Vec<Sysctl>) {
+    let defaults = NET_DEFAULTS
+        .iter()
+        .filter(|(path, _)| !sysctls.iter().any(|s| s.path == *path))
+        .map(|(path, value)| Sysctl { ns: Ns::Net, path: (*path).to_owned(), value: (*value).to_owned() });
+    let mine: Vec<Sysctl> = defaults.collect();
+    sysctls.splice(0..0, mine);
+}
+
 /// Writes the sysctls from the agent, inside the container's namespaces:
 /// /proc/sys shows the calling task's network, IPC and UTS namespace, so
 /// the agent joins the one each key belongs to, writes, and comes back.
@@ -300,6 +317,18 @@ mod tests {
         let mut buf = Vec::new();
         kiri_proto::encode_retain(&mut buf, lines);
         buf
+    }
+
+    #[test]
+    fn a_container_gets_dockers_port_and_ping_defaults_unless_it_sets_them() {
+        let mut none = Vec::new();
+        add_net_defaults(&mut none);
+        let keys: Vec<(&str, &str)> = none.iter().map(|s| (s.path.as_str(), s.value.as_str())).collect();
+        assert_eq!(keys, [("net/ipv4/ip_unprivileged_port_start", "0"), ("net/ipv4/ping_group_range", "0 2147483647")]);
+        let mut own = vec![Sysctl { ns: Ns::Net, path: "net/ipv4/ip_unprivileged_port_start".into(), value: "1024".into() }];
+        add_net_defaults(&mut own);
+        let keys: Vec<(&str, &str)> = own.iter().map(|s| (s.path.as_str(), s.value.as_str())).collect();
+        assert_eq!(keys, [("net/ipv4/ping_group_range", "0 2147483647"), ("net/ipv4/ip_unprivileged_port_start", "1024")], "--sysctl wins");
     }
 
     #[test]

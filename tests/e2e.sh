@@ -661,6 +661,13 @@ t native-again "aarch64" bash -c "$D pull -q --platform linux/arm64 alpine >/dev
 $D rmi amd64/alpine:3.22 >/dev/null 2>&1
 
 section "security: seccomp, capabilities, read-only"
+# Docker's two defaults in a container's own network: any port and ping
+# without root. --sysctl wins; host networking keeps the VM's own.
+t unpriv-port-start "0" $D run --rm alpine cat /proc/sys/net/ipv4/ip_unprivileged_port_start
+t unpriv-ping-range "0	2147483647" $D run --rm alpine cat /proc/sys/net/ipv4/ping_group_range
+t unpriv-listen-80 "listening" $D run --rm -u 1000 alpine sh -c 'nc -lk -p 80 >/dev/null 2>&1 & sleep 0.5; netstat -ltn | grep -q ":80 " && echo listening'
+t unpriv-sysctl-wins "1024" $D run --rm --sysctl net.ipv4.ip_unprivileged_port_start=1024 alpine cat /proc/sys/net/ipv4/ip_unprivileged_port_start
+t unpriv-port-host-net "1024" $D run --rm --network host alpine cat /proc/sys/net/ipv4/ip_unprivileged_port_start
 t seccomp-on "Seccomp:	2" $D run --rm alpine grep Seccomp: /proc/self/status
 t seccomp-userns "not permitted" $D run --rm alpine unshare -U true
 t seccomp-keyctl "not permitted" bash -c "$D run --rm alpine sh -c 'apk add -q keyutils >/dev/null 2>&1; keyctl show 2>&1'"

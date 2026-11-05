@@ -222,7 +222,7 @@ pub fn spawn(spec: &RunSpec<'_>, paths: &Paths, net: NetCtx<'_>) -> io::Result<P
         super::cgroup::apply_limits(&cgroup, &spec.limits).map_err(cleanup)?;
     }
     let cgroup_fd = fs::File::open(&cgroup).map_err(cleanup)?;
-    let host = super::hostopts::parse(spec.opts).map_err(cleanup)?;
+    let mut host = super::hostopts::parse(spec.opts).map_err(cleanup)?;
     if spec.flags & run_flags::NET_HOST != 0 && host.sysctls.iter().any(|s| s.ns == super::hostopts::Ns::Net) {
         return Err(cleanup(io::Error::new(io::ErrorKind::InvalidInput, "net.* sysctls are not allowed in the host network namespace")));
     }
@@ -261,6 +261,12 @@ pub fn spawn(spec: &RunSpec<'_>, paths: &Paths, net: NetCtx<'_>) -> io::Result<P
     let nameserver = embedded_dns.then(|| embedded_address(spec, net.dns.relay));
     prepared.etc_files = write_etc_files(spec, &etc_dir, net.upstream_dns, nameserver).map_err(cleanup)?;
     prepared.mounts = parse_mounts(spec.mounts).map_err(cleanup)?;
+    // A network namespace of its own gets Docker's two defaults: any port
+    // and ping without root. Host networking, and `--network container:`
+    // (that container already has them), keep what they have.
+    if spec.flags & run_flags::NET_HOST == 0 && prepared.net_join.is_none() {
+        super::hostopts::add_net_defaults(&mut host.sysctls);
+    }
     let bridged = !spec.net.bridge.is_empty() && spec.flags & (run_flags::NET_HOST | run_flags::NET_NONE) == 0 && prepared.net_join.is_none();
     let mut go = None;
     // Sysctls are written from here once the namespaces exist: the child
