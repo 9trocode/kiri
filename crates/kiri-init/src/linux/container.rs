@@ -8,7 +8,7 @@
 use std::ffi::{CStr, CString};
 use std::fs;
 use std::io;
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
@@ -867,7 +867,17 @@ fn parse_mounts(list: StrList<'_>) -> io::Result<Vec<Mount>> {
             tmpfs_flags: 0,
         });
     }
+    // Parents before what's under them, as Docker sorts mounts: the CLI sends
+    // `-v` in no set order, and `/app/node_modules` mounted before `/app`
+    // would be hidden by it. The sort is stable, so equal depths keep theirs.
+    out.sort_by_key(|m| depth(&m.target));
     Ok(out)
+}
+
+/// How deep a mount target is: `.` is 0, `app` 1, `app/node_modules` 2.
+fn depth(target: &CStr) -> usize {
+    let t = target.to_bytes();
+    if t == b"." { 0 } else { t.split(|&b| b == b'/').filter(|c| !c.is_empty()).count() }
 }
 
 /// A tmpfs's mount flags from its flag words, in order, so `exec` after
@@ -896,7 +906,7 @@ fn tmpfs_flags(words: &[&str]) -> libc::c_ulong {
 /// pivot_root), creating the target as a directory or an empty file. The
 /// target is looked up inside `root`, so an image's symlink cannot point
 /// the mount, the copy-up or the new directory outside the container.
-fn apply_mount(root: BorrowedFd<'_>, m: &Mount) -> io::Result<()> {
+fn apply_mount(root: BorrowedFd<'_>, image: Option<BorrowedFd<'_>>, m: &Mount) -> io::Result<()> {
     let t = Path::new(std::ffi::OsStr::from_bytes(m.target.to_bytes()));
     if let Some(opts) = &m.tmpfs_opts {
         let at = inroot::open(root, t, Last::Dir)?;
@@ -905,12 +915,27 @@ fn apply_mount(root: BorrowedFd<'_>, m: &Mount) -> io::Result<()> {
     let src = m.source.as_ref().expect("bind mounts have a source");
     let at = inroot::open(root, t, if m.dir { Last::Dir } else { Last::File })?;
     let target = at.proc_path();
-    if m.dir && m.copy_up && !at.created {
-        let src_path = Path::new(std::ffi::OsStr::from_bytes(src.to_bytes()));
-        let image_path = Path::new(std::ffi::OsStr::from_bytes(target.to_bytes()));
-        let empty = fs::read_dir(src_path).map(|mut d| d.next().is_none()).unwrap_or(false);
-        if empty && image_path.is_dir() {
-            copy_tree(image_path, src_path)?;
+    if m.dir && m.copy_up {
+        // A new volume is filled from the image's directory, as Docker does,
+        // never from a bind mounted over it earlier (`./:/app` then
+        // `/app/node_modules` must get the image's node_modules, not the
+        // host's): looked up in the image's own tree when there is one.
+        let from = match image {
+            Some(img) => inroot::open(img, t, Last::Exists).ok(),
+            None => None,
+        };
+        let from_path = match &from {
+            Some(f) => Some(f.proc_path()),
+            None if image.is_none() && !at.created => Some(target.clone()),
+            None => None,
+        };
+        if let Some(from_path) = from_path {
+            let src_path = Path::new(std::ffi::OsStr::from_bytes(src.to_bytes()));
+            let image_path = Path::new(std::ffi::OsStr::from_bytes(from_path.to_bytes()));
+            let empty = fs::read_dir(src_path).map(|mut d| d.next().is_none()).unwrap_or(false);
+            if empty && image_path.is_dir() {
+                copy_tree(image_path, src_path)?;
+            }
         }
     }
     sys::mount(src, &target, c"none", libc::MS_BIND | libc::MS_REC, None)?;
@@ -921,6 +946,18 @@ fn apply_mount(root: BorrowedFd<'_>, m: &Mount) -> io::Result<()> {
         sys::mount(c"none", &at.proc_path(), c"none", libc::MS_BIND | libc::MS_REMOUNT | libc::MS_RDONLY | libc::MS_REC, None)?;
     }
     Ok(())
+}
+
+/// A detached copy of the current directory's mount (the container's
+/// root) without the mounts on it: the image as it is under any bind.
+/// None where the kernel has no open_tree (before Linux 5.2); volumes are
+/// then filled from what the path shows, as before.
+fn image_tree() -> Option<OwnedFd> {
+    const OPEN_TREE_CLONE: libc::c_uint = 1;
+    // SAFETY: a valid NUL-terminated path; the result is a new descriptor or -1.
+    let fd = unsafe { libc::syscall(libc::SYS_open_tree, libc::AT_FDCWD, c".".as_ptr(), OPEN_TREE_CLONE | libc::O_CLOEXEC as libc::c_uint) };
+    // SAFETY: a descriptor the kernel just returned, owned only here.
+    (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd as RawFd) })
 }
 
 /// Copies a directory tree keeping modes, owners and symlinks: what Docker
@@ -1004,9 +1041,13 @@ fn container_child(p: &Prepared, rootfs: &CStr, io: &ChildStdio) -> ! {
     for (src, target) in &p.etc_files {
         bind_file(root, src, target).unwrap_or_else(|e| fail(&target.to_string_lossy(), e));
     }
+    // The image's tree without the mounts made on it, for filling new
+    // volumes; closed (and so unmounted) once they are all in place.
+    let image = if p.mounts.iter().any(|m| m.copy_up) { image_tree() } else { None };
     for m in &p.mounts {
-        apply_mount(root, m).unwrap_or_else(|e| fail(&format!("mount {}", m.target.to_string_lossy()), e));
+        apply_mount(root, image.as_ref().map(|f| f.as_fd()), m).unwrap_or_else(|e| fail(&format!("mount {}", m.target.to_string_lossy()), e));
     }
+    drop(image);
 
     // pivot_root(".", ".") stacks the old root under the new one; detaching
     // it leaves only the container's filesystem visible.
@@ -1427,6 +1468,15 @@ mod tests {
         assert_eq!(mode(&vol.join("sub")), 0o700);
         assert_eq!(std::fs::read_link(vol.join("link")).unwrap(), std::path::Path::new("conf"));
         std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn mounts_go_parents_first_whatever_order_they_came_in() {
+        let m = |t: &str| super::Mount { source: None, target: std::ffi::CString::new(t).unwrap(), ro: false, dir: true, copy_up: false, tmpfs_opts: None, tmpfs_flags: 0 };
+        let mut mounts = vec![m("app/node_modules"), m("app"), m("data"), m("app/cache/x"), m(".")];
+        mounts.sort_by_key(|x| super::depth(&x.target));
+        let order: Vec<_> = mounts.iter().map(|x| x.target.to_str().unwrap()).collect();
+        assert_eq!(order, [".", "app", "data", "app/node_modules", "app/cache/x"]);
     }
 
     fn resolv(flags: u32, opts: &[&str], upstream: &[[u8; 4]]) -> String {
