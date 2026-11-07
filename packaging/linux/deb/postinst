@@ -12,6 +12,14 @@ docker_slot_free() {
   case "$(readlink /usr/bin/docker 2>/dev/null)" in /etc/alternatives/*) return 0 ;; esac
   return 1
 }
+# The same for a plugin in /usr/lib/docker/cli-plugins (docker-compose-plugin,
+# docker-buildx-plugin and docker-desktop put theirs there; Kiri's docker
+# uses them when they are).
+plugin_slot_free() {
+  [ -e "$1" ] || [ -L "$1" ] || return 0
+  case "$(readlink "$1" 2>/dev/null)" in /etc/alternatives/*) return 0 ;; esac
+  return 1
+}
 # A `kiri` that comes before /usr/bin on PATH runs instead of this package's:
 # often an older Kiri from a script or manual install. Not ours to delete.
 stale_kiri() {
@@ -47,6 +55,15 @@ case "$1" in
       else
         echo "Kiri is installed; /usr/bin/docker belongs to something else and stays. Kiri's CLI: /usr/libexec/kiri/docker"
       fi
+      mkdir -p /usr/lib/docker/cli-plugins
+      for p in docker-compose docker-buildx; do
+        l=/usr/lib/docker/cli-plugins/$p
+        if plugin_slot_free "$l"; then
+          update-alternatives --install "$l" "$p" "/usr/libexec/kiri/cli-plugins/$p" 10 || true
+        else
+          echo "$l belongs to another package and stays; Kiri's docker uses it."
+        fi
+      done
     else
       echo "Kiri is installed (engine only). Point a docker CLI at it:"
       echo "  docker context create kiri --docker host=unix:///run/kiri/docker.sock && docker context use kiri"
