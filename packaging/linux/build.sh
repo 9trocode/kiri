@@ -150,6 +150,8 @@ $(if [ "$full" = 1 ]; then echo " .
 EOF
   sed -i '/^$/d' "$pkg/DEBIAN/control"
   for s in postinst prerm postrm; do install -m 755 "$here/deb/$s" "$pkg/DEBIAN/$s"; done
+  # Re-check the plugin links when another package changes Docker's plugin folders.
+  [ "$full" = 1 ] && printf 'interest-noawait /usr/lib/docker/cli-plugins\ninterest-noawait /usr/libexec/docker/cli-plugins\ninterest-noawait /usr/local/lib/docker/cli-plugins\ninterest-noawait /usr/local/libexec/docker/cli-plugins\n' > "$pkg/DEBIAN/triggers"
   local deb=$outdir/${name}_${version}_${deb_arch}.deb
   dpkg-deb --build --root-owner-group "$pkg" "$deb" >/dev/null
   echo "$deb"

@@ -55,7 +55,12 @@ distro). What the packages do:
   winning, as on Windows. Compose and buildx go into
   `/usr/lib/docker/cli-plugins` the same way, one alternatives link each, so
   the package installs beside `docker-compose-plugin`, `docker-buildx-plugin`
-  and `docker-desktop` (whose plugins Kiri's docker then uses). Its `docker` talks to Kiri's socket unless
+  and `docker-desktop` (whose plugins Kiri's docker then uses). A link is
+  made only when Docker's own copy isn't in any of the CLI's plugin folders
+  (`/usr/lib`, `/usr/libexec`, `/usr/local/lib`, `/usr/local/libexec`
+  `…/docker/cli-plugins`), and a dpkg trigger (rpm `%filetriggerin` and
+  `%filetriggerpostun`) checks again whenever another package changes those
+  folders, so Docker's plugins installed or removed after Kiri still win. Its `docker` talks to Kiri's socket unless
   `DOCKER_HOST`, `DOCKER_CONTEXT` or a context of your own says otherwise.
 - The x86-64 full package also has the window: `/usr/lib/kiri/kiri-window`
   (kiri built with `--features window`, linking GTK 3 and WebKitGTK 4.1, so

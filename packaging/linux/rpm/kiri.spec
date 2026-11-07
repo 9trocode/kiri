@@ -168,16 +168,54 @@ exit 0
 
 %if 0%{?with_cli}
 %posttrans
-# Compose and buildx into /usr/lib/docker/cli-plugins, the CLI's plugin
-# directory, where the slot is absent or already an alternatives link; files
-# of Docker's own packages (docker-compose-plugin, docker-desktop) stay, and
-# Kiri's docker uses those. In %posttrans because an upgrade from a Kiri that
-# put real files there erases them only after %post.
+# Compose and buildx into /usr/lib/docker/cli-plugins where the slot is free
+# and Docker's own copy isn't in another of the CLI's plugin folders; else
+# Kiri's link goes and Docker's copy is used. In %posttrans because an
+# upgrade from a Kiri that put real files there erases them only after %post;
+# again whenever another package changes Docker's plugin folders.
 mkdir -p /usr/lib/docker/cli-plugins
 for p in docker-compose docker-buildx; do
   l=/usr/lib/docker/cli-plugins/$p
-  if [ ! -e $l ] && [ ! -L $l ] || readlink $l 2>/dev/null | grep -q '^/etc/alternatives/'; then
+  theirs=
+  for d in /usr/local/lib/docker/cli-plugins /usr/local/libexec/docker/cli-plugins /usr/libexec/docker/cli-plugins; do
+    [ -e $d/$p ] && theirs=1
+  done
+  if [ -z "$theirs" ] && { [ ! -e $l ] && [ ! -L $l ] || readlink $l 2>/dev/null | grep -q '^/etc/alternatives/'; }; then
     %{_sbindir}/update-alternatives --install $l $p /usr/libexec/kiri/cli-plugins/$p 10 || :
+  elif %{_sbindir}/update-alternatives --display $p 2>/dev/null | grep -q "^/usr/libexec/kiri/cli-plugins/$p "; then
+    %{_sbindir}/update-alternatives --remove $p /usr/libexec/kiri/cli-plugins/$p || :
+  fi
+done
+exit 0
+
+%filetriggerin -- /usr/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins /usr/local/lib/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
+mkdir -p /usr/lib/docker/cli-plugins
+for p in docker-compose docker-buildx; do
+  l=/usr/lib/docker/cli-plugins/$p
+  theirs=
+  for d in /usr/local/lib/docker/cli-plugins /usr/local/libexec/docker/cli-plugins /usr/libexec/docker/cli-plugins; do
+    [ -e $d/$p ] && theirs=1
+  done
+  if [ -z "$theirs" ] && { [ ! -e $l ] && [ ! -L $l ] || readlink $l 2>/dev/null | grep -q '^/etc/alternatives/'; }; then
+    %{_sbindir}/update-alternatives --install $l $p /usr/libexec/kiri/cli-plugins/$p 10 || :
+  elif %{_sbindir}/update-alternatives --display $p 2>/dev/null | grep -q "^/usr/libexec/kiri/cli-plugins/$p "; then
+    %{_sbindir}/update-alternatives --remove $p /usr/libexec/kiri/cli-plugins/$p || :
+  fi
+done
+exit 0
+
+%filetriggerpostun -- /usr/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins /usr/local/lib/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
+mkdir -p /usr/lib/docker/cli-plugins
+for p in docker-compose docker-buildx; do
+  l=/usr/lib/docker/cli-plugins/$p
+  theirs=
+  for d in /usr/local/lib/docker/cli-plugins /usr/local/libexec/docker/cli-plugins /usr/libexec/docker/cli-plugins; do
+    [ -e $d/$p ] && theirs=1
+  done
+  if [ -z "$theirs" ] && { [ ! -e $l ] && [ ! -L $l ] || readlink $l 2>/dev/null | grep -q '^/etc/alternatives/'; }; then
+    %{_sbindir}/update-alternatives --install $l $p /usr/libexec/kiri/cli-plugins/$p 10 || :
+  elif %{_sbindir}/update-alternatives --display $p 2>/dev/null | grep -q "^/usr/libexec/kiri/cli-plugins/$p "; then
+    %{_sbindir}/update-alternatives --remove $p /usr/libexec/kiri/cli-plugins/$p || :
   fi
 done
 exit 0
