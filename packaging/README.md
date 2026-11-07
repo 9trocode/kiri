@@ -49,10 +49,13 @@ distro). What the packages do:
   `/var/lib/kiri-daemon` (0700), images and containers in `/var/lib/kiri`
   (0710); removal keeps them, `apt purge` deletes them.
 - The full package adds `/usr/libexec/kiri/bin/docker` with Compose and buildx
-  in `/usr/lib/docker/cli-plugins`, and offers `docker` on PATH through
+  in `/usr/libexec/kiri/cli-plugins`, and offers `docker` on PATH through
   `update-alternatives` at priority 10, only when `/usr/bin/docker` is absent
   or already an alternatives link: a docker CLI another package owns keeps
-  winning, as on Windows. Its `docker` talks to Kiri's socket unless
+  winning, as on Windows. Compose and buildx go into
+  `/usr/lib/docker/cli-plugins` the same way, one alternatives link each, so
+  the package installs beside `docker-compose-plugin`, `docker-buildx-plugin`
+  and `docker-desktop` (whose plugins Kiri's docker then uses). Its `docker` talks to Kiri's socket unless
   `DOCKER_HOST`, `DOCKER_CONTEXT` or a context of your own says otherwise.
 - The x86-64 full package also has the window: `/usr/lib/kiri/kiri-window`
   (kiri built with `--features window`, linking GTK 3 and WebKitGTK 4.1, so

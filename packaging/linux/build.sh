@@ -62,11 +62,15 @@ stage_engine() { # root unitdir
   install -D -m 644 "$here/dev.kiri.host-access.policy" "$1/usr/share/polkit-1/actions/dev.kiri.host-access.policy"
 }
 stage_cli() { # root
-  mkdir -p "$1/usr/libexec/kiri/bin" "$1/usr/lib/docker/cli-plugins"
+  # The plugins stay in Kiri's own directory: /usr/lib/docker/cli-plugins
+  # belongs to Docker's packages (docker-compose-plugin, docker-desktop), and
+  # dpkg/rpm refuse to install over their files. postinst links them there
+  # through update-alternatives when the slot is free, as with /usr/bin/docker.
+  mkdir -p "$1/usr/libexec/kiri/bin" "$1/usr/libexec/kiri/cli-plugins"
   install -m 755 "$clidir/docker" "$1/usr/libexec/kiri/bin/docker"
   install -m 755 "$here/docker-wrapper" "$1/usr/libexec/kiri/docker"
-  install -m 755 "$clidir/docker-compose" "$1/usr/lib/docker/cli-plugins/docker-compose"
-  install -m 755 "$clidir/docker-buildx" "$1/usr/lib/docker/cli-plugins/docker-buildx"
+  install -m 755 "$clidir/docker-compose" "$1/usr/libexec/kiri/cli-plugins/docker-compose"
+  install -m 755 "$clidir/docker-buildx" "$1/usr/libexec/kiri/cli-plugins/docker-buildx"
 }
 # The AppStream entry software centers list Kiri by, with this version.
 metainfo() { # destination
@@ -108,7 +112,7 @@ EOF
   if [ "$full" = 1 ]; then
     cat >> "$pkg/usr/share/doc/$name/copyright" <<EOF
 
-Files: usr/libexec/kiri/bin/docker usr/lib/docker/cli-plugins/*
+Files: usr/libexec/kiri/bin/docker usr/libexec/kiri/cli-plugins/*
 Copyright: Docker, Inc.
 License: Apache-2.0
  The docker CLI, Docker Compose and Docker Buildx, unmodified, from
